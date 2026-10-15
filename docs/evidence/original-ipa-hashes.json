@@ -1,0 +1,17 @@
+[
+  {
+    "file": "com.obdsol.obdlink-7.4.0-eeveedecrypter.ipa",
+    "bytes": 32029873,
+    "sha256": "c65fcbf225922cdbbc36f2a57576eaf1e1ce8372dc0cec9ed0d358247a67da50"
+  },
+  {
+    "file": "com.prizmos.Carista-10.1.0.ipa",
+    "bytes": 53571414,
+    "sha256": "b065a750a04c1c3469f3dec81fa06a4c040e9a3c9acec9b7523633f8b7ca9d5c"
+  },
+  {
+    "file": "Carista OBD2-9.1-decrypted.ipa",
+    "bytes": 44726984,
+    "sha256": "292ca85a59ada4cff35cdd86b38e1e000fa8b2a7ba972cbb25dc3dcf026251e2"
+  }
+]

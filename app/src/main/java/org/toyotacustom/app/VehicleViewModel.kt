@@ -1,0 +1,135 @@
+package org.toyotacustom.app
+
+import android.app.Application
+import androidx.lifecycle.*
+import androidx.room.Room
+import kotlinx.coroutines.*
+import kotlinx.coroutines.flow.*
+import org.json.JSONArray
+import org.toyotacustom.core.*
+import java.util.UUID
+
+data class ScreenState(val status:String="Déconnecté",val connected:Boolean=false,val busy:Boolean=false,
+ val simulation:Boolean=false,val vin:String?=null,val adapter:String="Non connecté",val protocol:String="Non détecté",
+ val supported:Set<Int> = emptySet(), val values:Map<Int,Double> = emptyMap(),val codes:List<String>?=null,
+ val devices:List<Device> = emptyList(),val logs:List<String> = emptyList(),val custom:Map<String,String> = emptyMap())
+
+class VehicleViewModel(app:Application):AndroidViewModel(app) {
+ private val db=Room.databaseBuilder(app,LocalDatabase::class.java,"toyota-custom.db").build()
+ private val store=db.store()
+ val history=store.history().stateIn(viewModelScope,SharingStarted.WhileSubscribed(5000),emptyList())
+ val state=MutableStateFlow(ScreenState())
+ private var session:ElmSession?=null
+ private var sessionId=""
+ private var connectionJob:Job?=null
+ private var pollJob:Job?=null
+ private var operationJob:Job?=null
+ private var lastDevice:Device?=null
+ private var generation=0
+ val bluetooth=BluetoothDevices(app) { d -> state.update { s->s.copy(devices=(s.devices.filterNot { it.address==d.address }+d).sortedBy { !it.name.contains("NEX",true) }) } }
+ var definitions=emptyList<Definition>();private set
+ init { viewModelScope.launch {
+  val text=app.assets.open("toyota-catalog.json").bufferedReader().use{it.readText()}
+  val array=JSONArray(text)
+  val stored=(0 until array.length()).map { StoredDefinition(array.getJSONObject(it).getString("id"),array.getJSONObject(it).toString()) }
+  store.definition(stored)
+  definitions=store.definitions().map { row->val o=org.json.JSONObject(row.json);Definition(o.getString("id"),o.getString("name"),o.getString("category"),o.getString("description"),source=o.getString("source")) }
+  state.update { it.copy(status="Prêt — choisissez un appareil ou la simulation") }
+ } }
+ private fun log(line:String) {state.update { it.copy(logs=(it.logs+("${java.time.Instant.now()} $line")).takeLast(400)) }}
+ fun scan() {runCatching { bluetooth.scan();state.update {it.copy(status="Recherche Bluetooth pendant 12 secondes")};viewModelScope.launch { delay(12000);bluetooth.stop() } }.onFailure { error(it) }}
+ fun pair(d:Device) {runCatching {bluetooth.pair(d.address);state.update{it.copy(status="Terminez l’appairage Android puis relancez la recherche")}}.onFailure{error(it)}}
+ private fun error(e:Throwable) {state.update { it.copy(status=e.message?:"Erreur de communication",busy=false) };log("Erreur : ${e.message}")}
+ fun connect(d:Device?=null,simulate:Boolean=false) {
+  disconnect()
+  lastDevice=d
+  connectionJob=viewModelScope.launch {
+   var attempt=0
+   while(isActive && attempt<3) {
+    var attemptSession:ElmSession?=null
+    state.update {it.copy(busy=true,status=if(attempt==0) "Connexion…" else "Reconnexion ${attempt}/2…",simulation=simulate)}
+    try {
+     bluetooth.stop()
+     val transport=if(simulate) SimTransport() else ClassicTransport(bluetooth.adapter?:error("Bluetooth absent"),d?.address?:error("Appareil absent"))
+     val s=ElmSession(transport,::log);attemptSession=s;session=s;sessionId=UUID.randomUUID().toString()
+     if(transport is ClassicTransport) transport.connect()
+     val info=s.initialize()
+     val first=s.read("0100")
+     require(Obd.positive(first,"0100",0x41,0).isNotEmpty()) {"Aucune communication OBD avec le véhicule"}
+     val supported=Obd.supported(first,0).toMutableSet()
+     for(base in listOf(0x20,0x40,0x60)) {if(base in supported) supported.addAll(Obd.supported(s.read("01%02X".format(base)),base)) else break}
+     val protocol=s.read("ATDP").replace(">","").trim()
+     val protocolNumber=s.read("ATDPN").replace(">","").trim().removePrefix("A")
+     require(protocolNumber in setOf("6","7","8","9")) {"Cette version ne décode que l’OBD sur CAN ISO 15765-4. Protocole : $protocol"}
+     val vin=Obd.vin(s.read("0902"))
+     state.update{it.copy(connected=true,busy=false,adapter=info.replace(">","").trim(),supported=supported,protocol=protocol,vin=vin,status=if(simulate) "SIMULATION — aucune connexion véhicule" else if(Obd.toyota(vin)) "Toyota identifiée par WMI — modèle exact non confirmé" else "VIN Toyota non confirmé : diagnostic bloqué")}
+     break
+    } catch(e:CancellationException) {attemptSession?.close();throw e}
+    catch(e:Exception) {attemptSession?.close();if(session===attemptSession)session=null;error(e);attempt++;if(!simulate && attempt<3) delay(2000L*attempt) else break}
+   }
+  }
+ }
+ fun disconnect() {
+  generation++
+  connectionJob?.cancel();pollJob?.cancel();operationJob?.cancel();session?.close();session=null
+  state.update {ScreenState(devices=it.devices,logs=it.logs)}
+ }
+ private fun allowed()=state.value.connected&&(state.value.simulation||Obd.toyota(state.value.vin))
+ private fun operation(block:suspend (ElmSession)->Unit) {
+  if(state.value.busy || !allowed()) return
+  val s=session?:return
+  state.update{it.copy(busy=true)}
+  operationJob=viewModelScope.launch {
+   try{block(s)}catch(e:CancellationException){throw e}catch(e:Exception){error(e)
+    // A timed-out transport is closed by the driver. Never reuse its stream.
+    if(e is IllegalStateException){
+     s.close();session=null
+     val reconnectDevice=lastDevice
+     val failedGeneration=generation
+     state.update{it.copy(connected=false,values=emptyMap(),supported=emptySet(),vin=null)}
+     if(reconnectDevice!=null) viewModelScope.launch {delay(2000);if(session==null && generation==failedGeneration)connect(reconnectDevice)}
+    }
+   }finally{state.update{it.copy(busy=false)}}
+  }
+ }
+ fun diagnostic()=operation { s ->
+  val codes=mutableListOf<String>()
+  var answered=0
+  val unavailable=mutableListOf<String>()
+  for((cmd,label) in listOf("03" to "Mémorisé","07" to "En attente","0A" to "Permanent")) {
+   val reply=s.read(cmd)
+   if(reply.uppercase().contains("NO DATA")) {log("$label : réponse indisponible");unavailable.add(label);continue}
+   codes.addAll(Obd.dtcs(reply,cmd).map{"$label : $it"})
+   answered++
+  }
+  require(answered>0){"Aucun mode DTC n’a répondu : absence de défaut non établie"}
+  state.update{it.copy(codes=codes,status="Lecture terminée : $answered mode(s) répondu(s). Indisponible : ${unavailable.joinToString().ifEmpty{"aucun"}}")}
+ }
+ fun refresh()=operation { s ->
+  val values=mutableMapOf<Int,Double>()
+  for(pid in listOf(4,5,12,13,17,66,91).filter{it in state.value.supported}) {
+   Obd.value(s.read("01%02X".format(pid)),pid)?.let{values[pid]=it}
+  }
+  state.update{it.copy(values=values,status="Mesures actualisées à ${java.time.LocalTime.now().withNano(0)}")}
+ }
+ fun polling(enable:Boolean) {pollJob?.cancel();if(enable)pollJob=viewModelScope.launch{while(isActive && state.value.connected){refresh();delay(3000)}}}
+ fun clear(confirmed:Boolean)=operation { s ->
+  require(0x0C in state.value.supported && 0x0D in state.value.supported) {"Régime et vitesse nécessaires à l’effacement"}
+  val sim=state.value.simulation
+  store.add(History(session=sessionId,parameter="DTC standard",before=state.value.codes?.joinToString()?:"Non lu",after="",result="Demande confirmée ; effet non encore vérifié",simulated=sim))
+  s.clearStandard(confirmed,Obd.toyota(state.value.vin))
+  val remaining=Obd.dtcs(s.read("03"))
+  state.update{it.copy(codes=remaining.map{"Mémorisé : $it"},status=if(remaining.isEmpty()) "Effacement confirmé pour les défauts mémorisés. Les permanents peuvent rester." else "Réponse positive, mais défauts toujours présents")}
+  store.add(History(session=sessionId,parameter="DTC standard",before="Voir entrée précédente",after=remaining.joinToString(),result=state.value.status,simulated=sim))
+ }
+ // No vehicle customization transport exists until ECU-specific evidence is available.
+ fun simulateChange(id:String,value:String,restore:Boolean=false) {
+  if(!state.value.simulation || !state.value.connected) return
+  viewModelScope.launch {
+   val before=state.value.custom[id]?:"Normale (fictive)"
+   store.add(History(session="simulation",parameter=id,before=before,after=value,result=if(restore)"Restauration simulée" else "Modification simulée",simulated=true))
+   state.update{it.copy(custom=it.custom+(id to value),status="SIMULATION : valeur relue dans le simulateur uniquement")}
+  }
+ }
+ override fun onCleared() {disconnect();bluetooth.dispose();db.close()}
+}
