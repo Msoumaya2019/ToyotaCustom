@@ -2,8 +2,8 @@ plugins { id("com.android.application"); id("org.jetbrains.kotlin.android"); id(
 android {
  namespace = "org.toyotacustom.app"
  compileSdk = 36
- defaultConfig { applicationId = "org.toyotacustom.app"; minSdk = 29; targetSdk = 36; versionCode = 3; versionName = "0.3.0"; testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner" }
- buildFeatures { compose = true }
+ defaultConfig { applicationId = "org.toyotacustom.app"; minSdk = 29; targetSdk = 36; versionCode = 4; versionName = "0.4.0"; testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner" }
+ buildFeatures { compose = true; buildConfig = true }
  compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17 }
 }
 kotlin { compilerOptions { jvmTarget.set(org.jetbrains.kotlin.gradle.dsl.JvmTarget.JVM_17) } }

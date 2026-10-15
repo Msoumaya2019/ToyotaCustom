@@ -8,7 +8,7 @@ data class ExchangeTrace(val time: Long, val command: String, val response: Stri
 object TechnicalReport {
  fun create(state: ScreenState, includeIdentifiers: Boolean = false): String = JSONObject().apply {
   put("format", "toyota-custom-session-v1")
-  put("appVersion", "0.3.0")
+  put("appVersion", BuildConfig.VERSION_NAME)
   put("sessionId",state.sessionId?:JSONObject.NULL)
   put("sessionStartedAt",state.sessionStartedAt?.let{java.time.Instant.ofEpochMilli(it).toString()}?:JSONObject.NULL)
   put("exportedAt", java.time.Instant.now().toString())

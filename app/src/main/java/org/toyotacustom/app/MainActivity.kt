@@ -102,7 +102,7 @@ class MainActivity:ComponentActivity() {
      InfoCard("Système hybride","Les identifiants Toyota de batterie, blocs, températures et moteurs électriques ne sont pas validés. Aucune donnée constructeur n’est inventée.")
      if(91 in s.supported){
       Button(onClick={vm.refresh()},enabled=s.connected&&!s.busy){Text("Lire le PID standard 015B")}
-      InfoCard("Charge batterie — PID OBD générique",s.values[91]?.let{"%.1f %% — interprétation spécifique Toyota à confirmer".format(it)}?:"Annoncé par le véhicule ; pas encore lu")
+      InfoCard("Indicateur batterie — PID OBD générique",s.values[91]?.let{"%.1f %% — interprétation spécifique Toyota à confirmer".format(it)}?:"Annoncé par le véhicule ; pas encore lu")
      }else Text("PID générique 015B non annoncé. Données hybrides constructeur non disponibles dans cette version.")
     }
     4->{
@@ -130,11 +130,20 @@ class MainActivity:ComponentActivity() {
      OutlinedButton(onClick={ctx.startActivity(Intent(android.provider.Settings.ACTION_BLUETOOTH_SETTINGS))}){Text("Ouvrir les paramètres Bluetooth Android")}
      s.devices.forEach{d->
       InfoCard(d.name,"${d.address}\n${if(d.bonded)"Appairé"else "Non appairé"} • ${if(d.ble)"Détecté en BLE"else "Classic / appareil associé"}")
+      if(d.ble)OutlinedButton(onClick={vm.inspectBle(d)},enabled=!s.busy&&!s.connected){Text("Examiner les services BLE (sans écriture)")}
       if(!d.bonded)OutlinedButton(onClick={vm.pair(d)},enabled=!s.busy){Text("Appairer dans Android")}
-      Button(onClick={vm.connect(d)},enabled=!s.busy&&d.bonded){Text("Connecter via Bluetooth Classic SPP")}
+      Button(onClick={vm.connect(d)},enabled=!s.busy&&!s.connected&&d.bonded){Text("Connecter via Bluetooth Classic SPP")}
      }
-     Text("BLE : détection disponible. Transport ELM sur GATT non activé : UUID et protocole NexLink à vérifier. Aucun service série n’est présumé.")
-     if(s.connected)OutlinedButton(onClick={vm.disconnect()}){Text("Déconnecter")}
+     s.bleInventory?.let{inventory->
+      InfoCard("Inventaire BLE", "${inventory.address}\n${inventory.services.size} service(s) découvert(s). Les propriétés annoncées ne prouvent pas un protocole série ELM.")
+      inventory.services.forEach{service->
+       InfoCard("Service ${service.uuid}","Instance ${service.instanceId} • ${if(service.primary)"Primaire"else "Secondaire"}\n"+service.characteristics.joinToString("\n\n"){c->"${c.uuid} (instance ${c.instanceId})\n${gattPropertyLabels(c.properties).joinToString().ifEmpty{"Aucune propriété"}}\nDescripteurs : ${c.descriptors.joinToString().ifEmpty{"aucun"}}"})
+      }
+      OutlinedButton(onClick={exportText=inventory.json();exporter.launch("toyota-custom-inventaire-ble.json")}){Text("Exporter l’inventaire BLE (adresse masquée)")}
+      Text("Cet inventaire reste en mémoire jusqu’à la prochaine inspection ou connexion. Exportez-le pour le conserver.")
+     }
+     Text("BLE : détection et inventaire disponibles. Transport ELM sur GATT non activé : UUID et protocole NexLink à vérifier. Aucun service série n’est présumé.")
+     if(s.connected || s.busy)OutlinedButton(onClick={vm.disconnect()}){Text("Déconnecter / annuler")}
      Text("Apparence",style=MaterialTheme.typography.titleLarge)
      Row{listOf("Système","Clair","Sombre").forEachIndexed{i,t->TextButton(onClick={theme=i}){Text(t)}}}
      Row{Switch(developer,{developer=it});Text("Outils de développement",Modifier.padding(8.dp))}
@@ -148,7 +157,7 @@ class MainActivity:ComponentActivity() {
       Text("Le rapport JSON masque la réponse VIN par défaut. Les journaux techniques bruts peuvent contenir le VIN et des identifiants Bluetooth. Choisissez vous-même leur destinataire.")
       s.logs.takeLast(80).forEach{Text(it,style=MaterialTheme.typography.bodySmall)}
      }
-     InfoCard("À propos","Toyota Custom 0.3.0 • code original sous licence MIT\nApplication indépendante, sans affiliation Toyota. Fonctionnement local sans autorisation Internet.")
+     InfoCard("À propos","Toyota Custom ${BuildConfig.VERSION_NAME} • code original sous licence MIT\nApplication indépendante, sans affiliation Toyota. Fonctionnement local sans autorisation Internet.")
     }
    }
   }

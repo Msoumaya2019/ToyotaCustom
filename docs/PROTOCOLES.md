@@ -33,3 +33,10 @@ Les formats décodés sont 49 + InfoType + nombre d’éléments, puis respectiv
 L’adresse, le nom déclaré, les identifiants de calibration et les CVN sont des observations, pas une preuve d’authenticité du firmware, d’identité matérielle complète ou de compatibilité Toyota. Les conditions et commandes de personnalisation restent inconnues.
 
 Le format de rapport conserve sa version compatible `toyota-custom-session-v1` et ajoute `sessionId`, `sessionStartedAt` et `declaredStandardInfo`. Les rapports masqués sont sauvegardés dans `session_reports`. Les exports bruts ou incluant le VIN ne sont pas automatiquement stockés dans cette table. La migration 1 → 2 crée cette table sans réinitialiser `history` ni `definitions` ; aucune migration destructive n’est configurée.
+
+
+## Inventaire GATT 0.4.0
+
+Connexion explicite LE via connectGatt, autoConnect=false ; callbacks sur le looper principal. Découverte via discoverServices et onServicesDiscovered. Aucun readCharacteristic, writeCharacteristic, writeDescriptor ou setCharacteristicNotification. Fermeture dans finally sur succès, erreur, expiration ou annulation. Les résultats tardifs sont ignorés. Les erreurs GATT sont visibles avec leur code Android ; aucune tentative de contournement d’authentification.
+
+Rapport séparé toyota-custom-gatt-inventory-v1 : date, version, services UUID/instance/type, caractéristiques UUID/instance/propriétés/descripteurs. Les UUID répétés dans plusieurs instances ne sont pas fusionnés. Les propriétés restent des déclarations ; aucun rôle TX/RX n’est attribué. L’adresse est masquée à l’export. Aucun lien avec un VIN ou une session OBD n’est déduit. Une inspection vide reste vide, sans UUID substitué.

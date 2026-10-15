@@ -33,3 +33,8 @@ Le [datasheet ELM327](https://www.elmelectronics.com/wp-content/uploads/2017/01/
 Le [manuel ELM327](https://www.elmelectronics.com/wp-content/uploads/2017/01/ELM327DS.pdf), section des réponses multilignes page 44, documente 0904 avec plusieurs calculateurs et rappelle le rôle des en-têtes pour attribuer les calibrations. Le [manuel du simulateur Au Group Electronics, révision C](https://www.auelectronics.com/downloads/usermanual_simobd2can.pdf), tables des informations du service 09, distingue capacités, VIN, CALID, CVN et ECUNAME.
 
 Les définitions de commandes de [python-OBD](https://github.com/brendan-w/python-OBD/blob/master/obd/commands.py) confirment 0900, 0904 et 0906 ; 090A y est commenté comme non testé. La [documentation primaire py-obdii](https://py-obdii.readthedocs.io/en/latest/api/modes/mode_09.html) référence aussi le nom ECU. Aucun code ni jeu de données de ces projets n’est intégré ; les décodeurs et fixtures synthétiques sont originaux. Ces sources documentent des lectures standard, sans établir la compatibilité NexLink/Corolla ni fournir de commande de personnalisation Toyota.
+
+
+## Inventaire BLE — 0.4.0
+
+Documentation primaire Android : [connexion GATT](https://developer.android.com/develop/connectivity/bluetooth/ble/connect-gatt-server) et [découverte des services](https://developer.android.com/develop/connectivity/bluetooth/ble/transfer-ble-data), consultées le 15 octobre 2026. Implémentation originale utilisant les API du SDK Android, sans copie des exemples ni bibliothèque supplémentaire. Aucun profil UUID NexLink documenté ou observé sur le boîtier utilisateur n’est disponible dans les ressources récupérées.

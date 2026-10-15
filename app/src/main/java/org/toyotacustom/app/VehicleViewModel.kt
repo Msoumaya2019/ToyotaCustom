@@ -17,7 +17,7 @@ data class ScreenState(val status:String="Déconnecté",val connected:Boolean=fa
  val devices:List<Device> = emptyList(),val logs:List<String> = emptyList(),val custom:Map<String,String> = emptyMap(),
  val canHeaders:Boolean=false,val canIds:Set<String> = emptySet(),val traces:List<ExchangeTrace> = emptyList(),
  val deviceAddress:String?=null,val autoConnect:Boolean=true,val savedDeviceName:String?=null,val previousReport:String?=null,
- val sessionId:String?=null,val sessionStartedAt:Long?=null,val ecuIdentities:List<EcuIdentity> = emptyList())
+ val sessionId:String?=null,val sessionStartedAt:Long?=null,val ecuIdentities:List<EcuIdentity> = emptyList(),val bleInventory:BleInventory?=null)
 
 class VehicleViewModel(app:Application):AndroidViewModel(app) {
  private val db=Room.databaseBuilder(app,LocalDatabase::class.java,"toyota-custom.db").addMigrations(DatabaseMigrations.FROM_1_TO_2).build()
@@ -34,8 +34,9 @@ class VehicleViewModel(app:Application):AndroidViewModel(app) {
  private var lastDevice:Device?=null
  private var generation=0
  private var scanJob:Job?=null
+ private var bleJob:Job?=null
  private val reportMutex=Mutex()
- val bluetooth=BluetoothDevices(app,found={ d -> state.update { s->s.copy(devices=(s.devices.filterNot { it.address==d.address }+d).sortedBy { !it.name.contains("NEX",true) }) } },failed={ message->
+ val bluetooth=BluetoothDevices(app,found={ d -> state.update { s->s.copy(devices=(s.devices.filterNot { it.address==d.address }+d.copy(ble=d.ble || s.devices.any{it.address==d.address && it.ble})).sortedBy { !it.name.contains("NEX",true) }) } },failed={ message->
   state.update{it.copy(status=message)};log(message)
  })
  var definitions=emptyList<Definition>();private set
@@ -66,6 +67,21 @@ class VehicleViewModel(app:Application):AndroidViewModel(app) {
  fun setAutoConnect(enabled:Boolean) {
   preferences.edit().putBoolean("autoConnect",enabled).apply()
   state.update{it.copy(autoConnect=enabled)}
+ }
+ fun inspectBle(d:Device) {
+  if(state.value.connected || state.value.busy)return
+  scanJob?.cancel();bluetooth.stop()
+  val inspectionGeneration=generation
+  state.update{it.copy(busy=true,bleInventory=null,status="Inventaire des services BLE… (20 s maximum)")}
+  bleJob=viewModelScope.launch {
+   try {
+    val inventory=BleInspector(getApplication()).inspect(bluetooth.adapter?:error("Bluetooth absent"),d.address)
+    if(generation==inspectionGeneration)state.update{it.copy(bleInventory=inventory,status="Inventaire BLE terminé : ${inventory.services.size} service(s). Transport ELM non validé.")}
+   }catch(e:TimeoutCancellationException){if(generation==inspectionGeneration)error(IllegalStateException("Inventaire BLE : délai de 20 secondes dépassé"))}
+   catch(e:CancellationException){throw e}
+   catch(e:Exception){if(generation==inspectionGeneration)error(e)}
+   finally{if(generation==inspectionGeneration)state.update{it.copy(busy=false)}}
+  }
  }
  fun pair(d:Device) {runCatching {bluetooth.pair(d.address);state.update{it.copy(status="Terminez l’appairage Android puis relancez la recherche")}}.onFailure{error(it)}}
  private fun error(e:Throwable) {state.update { it.copy(status=e.message?:"Erreur de communication",busy=false) };log("Erreur : ${e.message}")}
@@ -120,7 +136,7 @@ class VehicleViewModel(app:Application):AndroidViewModel(app) {
  }
  fun disconnect() {
   generation++
-  scanJob?.cancel();bluetooth.stop()
+  scanJob?.cancel();bleJob?.cancel();bluetooth.stop()
   connectionJob?.cancel();pollJob?.cancel();operationJob?.cancel();session?.close();session=null
   state.update {it.copy(status="Déconnecté — dernière session conservée pour export",connected=false,busy=false,values=emptyMap(),codes=null,custom=emptyMap())}
  }

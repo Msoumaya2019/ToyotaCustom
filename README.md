@@ -1,4 +1,4 @@
-# Toyota Custom — Android 0.3.0
+# Toyota Custom — Android 0.4.0
 
 Application native Kotlin/Compose, Android 10 minimum, française, locale et sans abonnement. Version de développement : diagnostic OBD CAN standard, suivi des répondants CAN et transport Bluetooth Classic implémentés ; compatibilité réelle NexLink/Corolla non testée. Aucun réglage constructeur Toyota ne peut être lu ou modifié dans cette version.
 
@@ -50,3 +50,12 @@ Le bouton « Lire les identifiants OBD des calculateurs » lit les capacités st
 Les rapports JSON masqués sont désormais enregistrés dans Room après la connexion, la lecture des codes défaut ou l’identification des calculateurs terminées. Une sauvegarde manuelle est aussi disponible dans les outils de développement. L’onglet Historique affiche les 50 rapports les plus récents et permet de les exporter après redémarrage de l’application. Une sauvegarde ultérieure d’une même session actualise son rapport. Les anciennes entrées d’historique sont préservées par la migration de base 1 → 2.
 
 Les exports immédiats incluant volontairement le VIN et les journaux bruts restent des actions distinctes. Les sauvegardes de rapports conservent le masquage du VIN, indépendamment de l’option d’export immédiat.
+
+
+## Nouveautés 0.4.0 — inventaire BLE
+
+Dans Paramètres, recherchez les appareils. Pour un appareil réellement observé en BLE, « Examiner les services BLE (sans écriture) » établit une connexion GATT temporaire, découvre les UUID des services, caractéristiques et descripteurs, puis ferme la connexion. Les instances et propriétés brutes sont conservées. Aucun UUID série NexLink n’est présumé. Aucune valeur de caractéristique n’est lue, aucun abonnement ni écriture GATT n’est effectué, aucune commande ELM/CAN n’est envoyée.
+
+L’opération est bloquée pendant une connexion OBD ou une autre opération ; elle est annulable et limitée à 20 secondes. La radio NexLink n’a pas été testée ici. Une découverte réussie n’établit pas un protocole série ni la compatibilité véhicule. Le transport diagnostic reste Classic SPP.
+
+Le résultat reste en mémoire jusqu’à la prochaine inspection ou connexion. « Exporter l’inventaire BLE (adresse masquée) » permet de le conserver séparément des rapports OBD ; le fichier ne contient ni adresse Bluetooth, ni nom de l’appareil, ni VIN. Les UUID propriétaires peuvent néanmoins caractériser un produit. Ne pas désinstaller l’ancienne application pour mettre à jour avec un APK de même signature.
