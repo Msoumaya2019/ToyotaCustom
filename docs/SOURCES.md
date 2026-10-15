@@ -38,3 +38,8 @@ Les définitions de commandes de [python-OBD](https://github.com/brendan-w/pytho
 ## Inventaire BLE — 0.4.0
 
 Documentation primaire Android : [connexion GATT](https://developer.android.com/develop/connectivity/bluetooth/ble/connect-gatt-server) et [découverte des services](https://developer.android.com/develop/connectivity/bluetooth/ble/transfer-ble-data), consultées le 15 octobre 2026. Implémentation originale utilisant les API du SDK Android, sans copie des exemples ni bibliothèque supplémentaire. Aucun profil UUID NexLink documenté ou observé sur le boîtier utilisateur n’est disponible dans les ressources récupérées.
+
+
+## Mesures par source — 0.5.0
+
+Les tailles des réponses standard 0104/05/0C/0D/11/42/5B sont recoupées avec la table de [commandes python-OBD](https://github.com/brendan-w/python-OBD/blob/master/obd/commands.py), consultée le 15 octobre 2026. Les formules sont celles déjà implémentées dans notre noyau original. Aucun code GPL, profil de calculateur, PID Toyota ou jeu de données externe n’est copié. L’attribution aux sources utilise notre réassemblage CAN/ISO-TP existant, documenté dans les sections précédentes. Les tests sont synthétiques ; aucune mesure de Corolla physique n’est revendiquée.

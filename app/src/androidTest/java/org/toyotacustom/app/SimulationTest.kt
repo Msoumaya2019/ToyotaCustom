@@ -79,4 +79,31 @@ class SimulationTest {
   select("Historique")
   compose.waitUntil(15000){compose.onAllNodesWithText("Rapport OBD • SIMULATION").fetchSemanticsNodes().isNotEmpty()}
  }
+ @Test fun measurementsKeepCanSourceAndAreIncludedInSavedReports() {
+  simulate();select("Diagnostic")
+  compose.onNodeWithText("Actualiser les mesures").performScrollTo().performClick()
+  compose.waitUntil(15000){compose.onAllNodesWithText("Tension calculateur • 7E8").fetchSemanticsNodes().isNotEmpty()}
+  lateinit var model:VehicleViewModel
+  compose.runOnUiThread {model=androidx.lifecycle.ViewModelProvider(compose.activity)[VehicleViewModel::class.java]}
+  compose.waitUntil(15000){!model.state.value.busy}
+  compose.runOnUiThread {
+   val state=model.state.value
+   org.junit.Assert.assertTrue(state.measurements.isNotEmpty())
+   org.junit.Assert.assertTrue(state.measurements.all{it.receivedAt>0 && it.reading.canId=="7E8"})
+   val rows=org.json.JSONObject(TechnicalReport.create(state)).getJSONArray("liveMeasurements")
+   org.junit.Assert.assertEquals(state.measurements.size,rows.length())
+   org.junit.Assert.assertEquals("7E8",rows.getJSONObject(0).getString("canId"))
+  }
+  select("Historique")
+  compose.waitUntil(15000){model.savedReports.value.any{report->
+   org.json.JSONObject(report.json).optJSONArray("liveMeasurements")?.length()?.let{it>0}==true
+  }}
+  compose.runOnUiThread {
+   val previous=model.state.value.measurements
+   model.disconnect()
+   org.junit.Assert.assertEquals(previous,model.state.value.measurements)
+   org.junit.Assert.assertTrue(model.state.value.values.isEmpty())
+  }
+ }
+
 }

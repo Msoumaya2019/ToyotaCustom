@@ -34,6 +34,13 @@ object TechnicalReport {
   put("oemWritesEnabled", false)
   put("vinResponseMasked", !includeIdentifiers)
   put("supportedPids", JSONArray(state.supported.sorted().map { "%02X".format(it) }))
+  put("liveMeasurements",JSONArray().apply{state.measurements.forEach{sample->put(JSONObject().apply{
+   put("receivedAt",java.time.Instant.ofEpochMilli(sample.receivedAt).toString())
+   put("pid","%02X".format(sample.reading.pid))
+   put("canId",sample.reading.canId?:JSONObject.NULL)
+   put("value",sample.reading.value?:JSONObject.NULL)
+   put("issue",sample.reading.issue?:JSONObject.NULL)
+  })}})
   put("exchanges", JSONArray().apply {
    state.traces.forEach { trace -> put(JSONObject().apply {
     put("time", java.time.Instant.ofEpochMilli(trace.time).toString())

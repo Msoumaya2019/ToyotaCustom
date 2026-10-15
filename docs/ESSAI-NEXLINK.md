@@ -1,4 +1,4 @@
-# Essai terrain NexLink — version 0.4.0
+# Essai terrain NexLink — version 0.5.0
 
 Ce protocole prépare les premières observations réelles. Aucun essai radio ou Corolla n’a été effectué pendant le développement. Ne pas confondre les données SIMULATION avec les observations terrain.
 
@@ -23,3 +23,10 @@ L’adresse est visible localement pour identifier le boîtier mais absente du f
 ## Informations manquantes pour progresser
 
 Les anciens IPA et rapports ont été réutilisés dans l’inventaire du projet, mais n’établissent ni les UUID série de ce NexLink, ni une commande de réglage vérifiée sur cette Corolla. Une observation réelle GATT peut guider l’étude d’interopérabilité ; elle ne suffit pas à autoriser une écriture. Les noms/CALID/CVN obtenus en OBD restent des déclarations des répondants. Aucune fonction Toyota n’est activée automatiquement à partir de ces seules informations.
+
+
+## Mesures par source
+
+Après une connexion OBD réussie, ouvrir Diagnostic → Actualiser les mesures. Vérifier les PID effectivement annoncés, la source CAN de chaque mesure et la date de réception. Le régime et la vitesse doivent correspondre aux conditions réelles ; une réponse inhabituelle ou indisponible doit être conservée telle quelle, sans forcer une valeur. Les adresses sont des répondants observés et non une identification des calculateurs Toyota.
+
+Exporter ensuite le rapport sauvegardé depuis Historique. La section liveMeasurements contient les dernières valeurs ou erreurs, par source. Deux sources peuvent déclarer des valeurs différentes : ne pas choisir arbitrairement celle qui paraît plausible. Sans en-tête vérifié, les sources restent inconnues. Ce test ne nécessite aucun effacement ni modification. Les mesures conservées après déconnexion sont étiquetées comme anciennes ; une nouvelle connexion les réinitialise.

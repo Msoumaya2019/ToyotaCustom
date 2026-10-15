@@ -40,3 +40,14 @@ Le format de rapport conserve sa version compatible `toyota-custom-session-v1` e
 Connexion explicite LE via connectGatt, autoConnect=false ; callbacks sur le looper principal. Découverte via discoverServices et onServicesDiscovered. Aucun readCharacteristic, writeCharacteristic, writeDescriptor ou setCharacteristicNotification. Fermeture dans finally sur succès, erreur, expiration ou annulation. Les résultats tardifs sont ignorés. Les erreurs GATT sont visibles avec leur code Android ; aucune tentative de contournement d’authentification.
 
 Rapport séparé toyota-custom-gatt-inventory-v1 : date, version, services UUID/instance/type, caractéristiques UUID/instance/propriétés/descripteurs. Les UUID répétés dans plusieurs instances ne sont pas fusionnés. Les propriétés restent des déclarations ; aucun rôle TX/RX n’est attribué. L’adresse est masquée à l’export. Aucun lien avec un VIN ou une session OBD n’est déduit. Une inspection vide reste vide, sans UUID substitué.
+
+
+## Mesures standard par source — 0.5.0
+
+La liste des commandes reste inchangée : 0104, 0105, 010C, 010D, 0111, 0142 et 015B, uniquement si annoncées dans les bitmaps disponibles. Les réponses sont groupées par identifiant CAN après réassemblage ISO-TP. Plusieurs réponses sans en-tête ont une source inconnue commune, sans tentative d’attribution.
+
+Les charges utiles attendues sont strictement 41 + PID + un octet, sauf 010C et 0142 (deux octets). Le remplissage CAN extérieur à la longueur ISO-TP est retiré par le décodeur CAN ; un octet supplémentaire dans la charge utile reste une anomalie. En format ELM sans en-tête, une réponse laissant apparaître du remplissage non délimité reste refusée plutôt que tronquée arbitrairement.
+
+Une réponse négative au service 01, un service/PID inattendu ou une longueur incompatible invalide la mesure de sa source. Des valeurs contradictoires pour une même source invalident cette source, même si une répétition ultérieure correspond à la première. Les doublons identiques d’une même source sont regroupés. Des sources différentes restent séparées. Le consensus de sécurité refuse toute valeur manquante, anomalie, mélange de PID ou désaccord.
+
+Le rapport toyota-custom-session-v1 ajoute liveMeasurements : receivedAt, pid, canId (null si absent), value (null en cas d’anomalie), issue. Aucune identité de calculateur, compatibilité Toyota ou grandeur hybride constructeur n’est déduite de cette adresse ou d’un PID générique. Les rapports enregistrent les dernières mesures et n’offrent pas d’enregistrement continu de toute la session. Aucun changement du schéma Room 2.

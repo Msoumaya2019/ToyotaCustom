@@ -1,4 +1,4 @@
-# Toyota Custom — Android 0.4.0
+# Toyota Custom — Android 0.5.0
 
 Application native Kotlin/Compose, Android 10 minimum, française, locale et sans abonnement. Version de développement : diagnostic OBD CAN standard, suivi des répondants CAN et transport Bluetooth Classic implémentés ; compatibilité réelle NexLink/Corolla non testée. Aucun réglage constructeur Toyota ne peut être lu ou modifié dans cette version.
 
@@ -59,3 +59,12 @@ Dans Paramètres, recherchez les appareils. Pour un appareil réellement observ�
 L’opération est bloquée pendant une connexion OBD ou une autre opération ; elle est annulable et limitée à 20 secondes. La radio NexLink n’a pas été testée ici. Une découverte réussie n’établit pas un protocole série ni la compatibilité véhicule. Le transport diagnostic reste Classic SPP.
 
 Le résultat reste en mémoire jusqu’à la prochaine inspection ou connexion. « Exporter l’inventaire BLE (adresse masquée) » permet de le conserver séparément des rapports OBD ; le fichier ne contient ni adresse Bluetooth, ni nom de l’appareil, ni VIN. Les UUID propriétaires peuvent néanmoins caractériser un produit. Ne pas désinstaller l’ancienne application pour mettre à jour avec un APK de même signature.
+
+
+## Nouveautés 0.5.0 — mesures attribuées aux sources CAN
+
+Diagnostic affiche désormais les mesures séparément pour chaque identifiant CAN observé, avec leur date de réception. Sans en-tête, aucune adresse n’est inventée. Une réponse tronquée, trop longue, négative ou contradictoire pour une même source est affichée comme indisponible. Les valeurs différentes de deux sources restent distinctes ; aucune source n’est choisie arbitrairement.
+
+Les rapports JSON ajoutent liveMeasurements (PID, source, date, valeur ou erreur), sauvegardé avec le rapport de session après une actualisation terminée. Il s’agit des dernières mesures, pas d’un enregistreur de séries temporelles. Les requêtes restent fonctionnelles : aucune adresse physique constructeur n’est ciblée et aucun PID supplémentaire n’est ajouté.
+
+Après déconnexion, les dernières mesures sont conservées pour l’export avec leur date et un libellé explicite de session déconnectée. Une nouvelle connexion réinitialise la liste. Pendant une nouvelle actualisation, les anciennes mesures sont retirées et les résultats sont ajoutés au fur et à mesure. La valeur de consensus interne, utilisée pour les contrôles d’effacement, n’existe que si toutes les réponses décodées sont valides et identiques. Les contrôles vitesse/régime restent des lectures fraîches, indépendantes de l’écran.

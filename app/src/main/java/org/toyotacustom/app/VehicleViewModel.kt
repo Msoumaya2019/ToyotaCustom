@@ -11,13 +11,15 @@ import org.json.JSONArray
 import org.toyotacustom.core.*
 import java.util.UUID
 
+data class LiveSample(val receivedAt:Long,val reading:LiveReading)
+
 data class ScreenState(val status:String="Déconnecté",val connected:Boolean=false,val busy:Boolean=false,
  val simulation:Boolean=false,val vin:String?=null,val adapter:String="Non connecté",val protocol:String="Non détecté",
  val supported:Set<Int> = emptySet(), val values:Map<Int,Double> = emptyMap(),val codes:List<String>?=null,
  val devices:List<Device> = emptyList(),val logs:List<String> = emptyList(),val custom:Map<String,String> = emptyMap(),
  val canHeaders:Boolean=false,val canIds:Set<String> = emptySet(),val traces:List<ExchangeTrace> = emptyList(),
  val deviceAddress:String?=null,val autoConnect:Boolean=true,val savedDeviceName:String?=null,val previousReport:String?=null,
- val sessionId:String?=null,val sessionStartedAt:Long?=null,val ecuIdentities:List<EcuIdentity> = emptyList(),val bleInventory:BleInventory?=null)
+ val sessionId:String?=null,val sessionStartedAt:Long?=null,val ecuIdentities:List<EcuIdentity> = emptyList(),val bleInventory:BleInventory?=null,val measurements:List<LiveSample> = emptyList())
 
 class VehicleViewModel(app:Application):AndroidViewModel(app) {
  private val db=Room.databaseBuilder(app,LocalDatabase::class.java,"toyota-custom.db").addMigrations(DatabaseMigrations.FROM_1_TO_2).build()
@@ -197,11 +199,18 @@ class VehicleViewModel(app:Application):AndroidViewModel(app) {
   persistReport(state.value)
  }
  fun refresh()=operation { s ->
+  state.update{it.copy(values=emptyMap(),measurements=emptyList())}
+  val samples=mutableListOf<LiveSample>()
   val values=mutableMapOf<Int,Double>()
-  for(pid in listOf(4,5,12,13,17,66,91).filter{it in state.value.supported}) {
-   Obd.value(s.read("01%02X".format(pid)),pid)?.let{values[pid]=it}
+  for(pid in LiveMeasurements.pids.filter{it in state.value.supported}) {
+   val decoded=LiveMeasurements.decode(s.read("01%02X".format(pid)),pid)
+   val receivedAt=System.currentTimeMillis()
+   samples.addAll(decoded.map{LiveSample(receivedAt,it)})
+   LiveMeasurements.consensus(decoded)?.let{values[pid]=it}
+   state.update{it.copy(values=values.toMap(),measurements=samples.toList())}
   }
-  state.update{it.copy(values=values,status="Mesures actualisées à ${java.time.LocalTime.now().withNano(0)}")}
+  state.update{it.copy(status="Mesures actualisées à ${java.time.LocalTime.now().withNano(0)} — sources affichées séparément")}
+  persistReport(state.value)
  }
  fun polling(enable:Boolean) {pollJob?.cancel();if(enable)pollJob=viewModelScope.launch{while(isActive && state.value.connected){refresh();delay(3000)}}}
  fun clear(confirmed:Boolean)=operation { s ->

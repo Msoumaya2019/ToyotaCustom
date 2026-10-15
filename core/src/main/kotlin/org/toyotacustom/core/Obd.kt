@@ -71,23 +71,8 @@ object Obd {
    if (b.size < 6) emptyList() else (1..32).filter { n -> b[2+(n-1)/8] and (1 shl (7-(n-1)%8)) != 0 }.map { base+it }
   }.toSet()
  }
- fun value(raw: String, pid: Int): Double? {
-  val replies = positive(raw,"01%02X".format(pid),0x41,pid)
-  // Ambiguous replies from multiple ECUs must never be used as a safety check.
-  val values = replies.mapNotNull { b ->
-   val a = b.getOrNull(2) ?: return@mapNotNull null
-   when (pid) {
-    0x04,0x11 -> a * 100.0/255
-    0x05 -> a - 40.0
-    0x0D -> a.toDouble()
-    0x0C -> b.getOrNull(3)?.let { (256*a+it)/4.0 }
-    0x42 -> b.getOrNull(3)?.let { (256*a+it)/1000.0 }
-    0x5B -> a*100.0/255
-    else -> null
-   }
-  }
-  return values.takeIf { it.size == replies.size }?.distinct()?.singleOrNull()
- }
+ fun value(raw: String, pid: Int): Double? =
+  if(pid !in LiveMeasurements.pids)null else LiveMeasurements.consensus(LiveMeasurements.decode(raw,pid))
  fun dtcs(raw: String, command: String = "03"): List<String> {
   val service = command.toInt(16)+0x40
   val replies = positive(raw,command,service)

@@ -82,9 +82,10 @@ class MainActivity:ComponentActivity() {
      Button(onClick={vm.refresh()},enabled=enabled){Text("Actualiser les mesures")}
      var polling by remember{mutableStateOf(false)}
      Row {Checkbox(polling,{polling=it;vm.polling(it)},enabled=enabled);Text("Actualisation toutes les 3 secondes")}
-     s.values.filterKeys{it!=91}.forEach{(pid,v)->InfoCard(pidName(pid),"%.1f %s".format(v,pidUnit(pid)))}
-     if(s.values.isEmpty())Text("Aucune mesure lue. Seuls les PID annoncés par le véhicule sont interrogés.")
-     Text("Valeurs ponctuelles : vérifiez l’heure de la dernière actualisation affichée en haut.")
+     if(!s.connected && s.measurements.isNotEmpty())Text("Dernières mesures de la session déconnectée — aucune mesure en direct")
+     s.measurements.filter{it.reading.pid!=91}.forEach{sample->MeasurementCard(sample,s.connected)}
+     if(s.measurements.isEmpty())Text("Aucune mesure lue. Seuls les PID annoncés par le véhicule sont interrogés.")
+     Text("Chaque valeur indique sa source CAN et sa date de réception. Sans en-tête, la source reste inconnue. Une adresse CAN ne prouve pas l’identité du calculateur.")
     }
     2->{
      InfoCard("Catalogue de recherche","Les familles ci-dessous ont été repérées dans les analyses précédentes. Calculateur, valeurs et commandes restent à établir pour votre véhicule. Aucune lecture ou écriture Toyota n’est activée.")
@@ -102,7 +103,8 @@ class MainActivity:ComponentActivity() {
      InfoCard("Système hybride","Les identifiants Toyota de batterie, blocs, températures et moteurs électriques ne sont pas validés. Aucune donnée constructeur n’est inventée.")
      if(91 in s.supported){
       Button(onClick={vm.refresh()},enabled=s.connected&&!s.busy){Text("Lire le PID standard 015B")}
-      InfoCard("Indicateur batterie — PID OBD générique",s.values[91]?.let{"%.1f %% — interprétation spécifique Toyota à confirmer".format(it)}?:"Annoncé par le véhicule ; pas encore lu")
+      s.measurements.filter{it.reading.pid==91}.forEach{sample->MeasurementCard(sample,s.connected)}
+      Text("PID 015B : indicateur générique ; interprétation et lien avec la charge réelle de la batterie Toyota non validés.")
      }else Text("PID générique 015B non annoncé. Données hybrides constructeur non disponibles dans cette version.")
     }
     4->{
@@ -167,8 +169,13 @@ class MainActivity:ComponentActivity() {
  customDialog?.let{value->AlertDialog(onDismissRequest={customDialog=null},title={Text("Confirmer la simulation")},text={Text("Sauvegarder la valeur fictive actuelle et appliquer $value dans le simulateur ? Aucun calculateur réel ne sera contacté.")},confirmButton={TextButton(onClick={vm.simulateChange("sim_lights",value);customDialog=null}){Text("Simuler")}},dismissButton={TextButton(onClick={customDialog=null}){Text("Annuler")}})}
  }
 }
+@Composable fun MeasurementCard(sample:LiveSample,connected:Boolean) {
+ val r=sample.reading
+ InfoCard("${pidName(r.pid)} • ${r.canId?:"Source inconnue"}",
+  (if(connected)""else "Dernière mesure conservée — session déconnectée\n")+(r.value?.let{"%.1f %s".format(it,pidUnit(r.pid))}?:"Valeur indisponible : ${r.issue?:"réponse non interprétable"}")+"\nReçu : ${java.time.Instant.ofEpochMilli(sample.receivedAt)}")
+}
 @Composable fun InfoCard(title:String,body:String) {
  Card(Modifier.fillMaxWidth()) {Column(Modifier.padding(16.dp),verticalArrangement=Arrangement.spacedBy(6.dp)){Text(title,style=MaterialTheme.typography.titleMedium);Text(body)}}
 }
-fun pidName(pid:Int)=when(pid){4->"Charge moteur";5->"Liquide de refroidissement";12->"Régime moteur";13->"Vitesse véhicule";17->"Position du papillon";66->"Tension calculateur";else->"PID %02X".format(pid)}
-fun pidUnit(pid:Int)=when(pid){4,17->"%";5->"°C";12->"tr/min";13->"km/h";66->"V";else->""}
+fun pidName(pid:Int)=when(pid){4->"Charge moteur";5->"Liquide de refroidissement";12->"Régime moteur";13->"Vitesse véhicule";17->"Position du papillon";66->"Tension calculateur";91->"Indicateur batterie standard";else->"PID %02X".format(pid)}
+fun pidUnit(pid:Int)=when(pid){4,17,91->"%";5->"°C";12->"tr/min";13->"km/h";66->"V";else->""}
