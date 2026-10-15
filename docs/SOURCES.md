@@ -21,3 +21,8 @@ Les ressources IPA apportent des noms de fonctions mais aucune commande complèt
 La [notice NEXAS distribuée avec le produit](https://m.media-amazon.com/images/I/B1krMcya2yL.pdf) indique pour Android un appairage NEXAS, PIN 1234, et Bluetooth Classic ; le matériel et son firmware doivent confirmer SPP. Les profils BLE ne sont pas déduits du nom commercial.
 
 Les [permissions Android officielles](https://developer.android.com/develop/connectivity/bluetooth/bt-permissions) guident la demande SCAN/CONNECT sur Android 12+, et la localisation pour la découverte au premier plan sur Android 10/11.
+
+
+## Extension CAN 0.2.0
+
+Le [datasheet ELM327](https://www.elmelectronics.com/wp-content/uploads/2017/01/ELM327DS.pdf), sections CAF0/CAF1, D0/D1 et H0/H1 (pages 14, 17 et 18), précise qu’avec H1 les octets PCI reçus redeviennent visibles, tandis que CAF1 conserve le formatage des requêtes. D0 désactive l’affichage du DLC. La nouvelle implémentation originale reconstruit ces réponses ; le boîtier doit encore prouver ce comportement sur le matériel réel. Aucun UUID NexLink ou DID constructeur nouveau n’est déduit de cette documentation.

@@ -14,29 +14,30 @@ import java.util.concurrent.TimeUnit
 data class Device(val address: String, val name: String, val bonded: Boolean, val ble: Boolean = false)
 
 @SuppressLint("MissingPermission")
-class BluetoothDevices(private val context: Context, private val found: (Device)->Unit) {
+class BluetoothDevices(private val context: Context, private val found: (Device)->Unit, private val failed:(String)->Unit={}) {
  val adapter = context.getSystemService(BluetoothManager::class.java)?.adapter
  private var registered = false
  private val receiver=object: BroadcastReceiver() {
   override fun onReceive(c: Context?, i: Intent?) {
    val device = if(Build.VERSION.SDK_INT>=33) i?.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE,BluetoothDevice::class.java) else @Suppress("DEPRECATION") i?.getParcelableExtra(BluetoothDevice.EXTRA_DEVICE)
-   device?.let { report(it,false) }
+   runCatching {device?.let { report(it,false) }}.onFailure{failed("Accès Bluetooth interrompu : ${it.message}")}
   }
  }
  private val bleCallback=object: ScanCallback() {
-  override fun onScanResult(type: Int,result: ScanResult) { report(result.device,true) }
+  override fun onScanResult(type: Int,result: ScanResult) {runCatching {report(result.device,true)}.onFailure{failed("Accès BLE interrompu : ${it.message}")}}
+  override fun onScanFailed(code:Int) {failed("Recherche BLE impossible (code $code). Les appareils associés restent sélectionnables.")}
  }
  private fun report(d: BluetoothDevice,ble: Boolean) = found(Device(d.address,d.name?:"Appareil sans nom",d.bondState==BluetoothDevice.BOND_BONDED,ble))
  fun scan() {
   val a=adapter ?: error("Bluetooth absent")
   check(a.isEnabled) { "Activez le Bluetooth dans les paramètres Android" }
   if(!registered) {
-   val f=IntentFilter(BluetoothDevice.ACTION_FOUND)
+   val f=IntentFilter(BluetoothDevice.ACTION_FOUND).apply {addAction(BluetoothDevice.ACTION_BOND_STATE_CHANGED)}
    if(Build.VERSION.SDK_INT>=33) context.registerReceiver(receiver,f,Context.RECEIVER_EXPORTED) else context.registerReceiver(receiver,f)
    registered=true
   }
   a.bondedDevices.forEach { report(it,false) }
-  a.startDiscovery()
+  if(!a.startDiscovery())failed("Recherche Bluetooth Classic indisponible. Vérifiez le Bluetooth et la localisation sur Android 10/11.")
   a.bluetoothLeScanner?.startScan(bleCallback)
  }
  fun stop() { runCatching { adapter?.cancelDiscovery();adapter?.bluetoothLeScanner?.stopScan(bleCallback) } }

@@ -18,6 +18,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import org.toyotacustom.core.Obd
+import android.widget.Toast
 
 class MainActivity:ComponentActivity() {
  override fun onCreate(savedInstanceState:Bundle?) {super.onCreate(savedInstanceState);setContent{ToyotaApp()}}
@@ -32,11 +33,17 @@ class MainActivity:ComponentActivity() {
  var clearDialog by remember{mutableStateOf(false)}
  var customDialog by remember{mutableStateOf<String?>(null)}
  var exportText by remember{mutableStateOf("")}
+ var exportIdentifiers by remember{mutableStateOf(false)}
  val ctx=androidx.compose.ui.platform.LocalContext.current
  val exporter=rememberLauncherForActivityResult(ActivityResultContracts.CreateDocument("text/plain")) {uri->
-  if(uri!=null) runCatching {ctx.contentResolver.openOutputStream(uri)?.bufferedWriter()?.use{it.write(exportText)}}
+  if(uri!=null) runCatching {
+   requireNotNull(ctx.contentResolver.openOutputStream(uri)).bufferedWriter().use{it.write(exportText)}
+  }.onSuccess {Toast.makeText(ctx,"Rapport enregistré",Toast.LENGTH_SHORT).show()}
+   .onFailure {Toast.makeText(ctx,"Échec de l’export : ${it.message}",Toast.LENGTH_LONG).show()}
  }
- val permission=rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {r->if(r.values.all{it})vm.scan()}
+ val permission=rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {r->
+  if(r.values.all{it})vm.scan() else Toast.makeText(ctx,"Autorisation Bluetooth refusée : ouvrez les paramètres Android pour la modifier.",Toast.LENGTH_LONG).show()
+ }
  fun scan(){ permission.launch(if(Build.VERSION.SDK_INT>=31)arrayOf(Manifest.permission.BLUETOOTH_SCAN,Manifest.permission.BLUETOOTH_CONNECT) else arrayOf(Manifest.permission.ACCESS_FINE_LOCATION)) }
  val dark=theme==2 || (theme==0 && isSystemInDarkTheme())
  MaterialTheme(colorScheme=if(dark)darkColorScheme(primary=Color(0xFFFFB4AB))else lightColorScheme(primary=Color(0xFFAD2929))) {
@@ -54,7 +61,7 @@ class MainActivity:ComponentActivity() {
   Column(Modifier.weight(1f).verticalScroll(rememberScrollState()).padding(20.dp),verticalArrangement=Arrangement.spacedBy(12.dp)) {
    when(tab) {
     0->{
-     InfoCard("Véhicule",s.vin?.let{"VIN : $it\n${if(Obd.toyota(it))"Constructeur Toyota identifié par WMI" else "Constructeur non confirmé"}\nModèle, année et équipement non déterminés"}?:"Aucun véhicule identifié")
+     InfoCard(if(s.connected)"Véhicule"else "Dernière identification",s.vin?.let{"VIN : $it\n${if(Obd.toyota(it))"Constructeur Toyota identifié par WMI" else "Constructeur non confirmé"}\nModèle, année et équipement non déterminés"}?:"Aucun véhicule identifié")
      InfoCard("Profil prioritaire","Corolla 1.8 Hybrid • Europe • 2019\nProfil demandé ; il ne constitue pas une identification du véhicule connecté.")
      InfoCard("Boîtier", "${s.adapter}\n${s.protocol}\n${s.supported.size} PID standard annoncés")
      Button(onClick={tab=5},modifier=Modifier.fillMaxWidth()){Text("Configurer la connexion NexLink")}
@@ -64,6 +71,7 @@ class MainActivity:ComponentActivity() {
     1->{
      val enabled=s.connected&&!s.busy&&(s.simulation||Obd.toyota(s.vin))
      InfoCard("Diagnostic OBD standard","Lecture des défauts antipollution mémorisés, en attente et permanents. Le balayage des calculateurs Toyota n’est pas encore implémenté.")
+     InfoCard("Répondants CAN observés",if(s.canIds.isEmpty())"Aucun identifiant observé"else "${s.canIds.sorted().joinToString()}\nAdresses de réponse uniquement ; identité des calculateurs non vérifiée.")
      Button(onClick={vm.diagnostic()},enabled=enabled){Text("Lire les codes défaut")}
      InfoCard("Résultat",s.codes?.let{if(it.isEmpty())"Aucun code retourné par les modes ayant répondu. Consultez les journaux pour les modes indisponibles."else it.joinToString("\n")}?:"Aucune lecture effectuée")
      OutlinedButton(onClick={clearDialog=true},enabled=enabled&&s.codes!=null){Text("Effacer les défauts standard…")}
@@ -104,7 +112,10 @@ class MainActivity:ComponentActivity() {
     5->{
      Text("Connexion Bluetooth",style=MaterialTheme.typography.titleLarge)
      Text("Appairez NEXAS dans Android (PIN indiqué par le fabricant : 1234), puis sélectionnez l’appareil. La sélection déclenche la connexion SPP ; 2 nouvelles tentatives sont faites en cas d’échec initial.")
-     Button(onClick={scan()},enabled=!s.busy){Text("Rechercher et autoriser le Bluetooth")}
+     Button(onClick={scan()},enabled=!s.busy&&!s.connected){Text("Rechercher et autoriser le Bluetooth")}
+     Row{Switch(s.autoConnect,{vm.setAutoConnect(it)});Text("Reconnecter automatiquement l’appareil mémorisé après la recherche",Modifier.padding(8.dp))}
+     s.savedDeviceName?.let{Text("Dernier appareil ayant communiqué : $it")}
+     Text("La reconnexion automatique utilise uniquement l’adresse de votre dernier appareil sélectionné ayant communiqué. Android 10/11 peut aussi demander d’activer la localisation pour la découverte.")
      OutlinedButton(onClick={ctx.startActivity(Intent(android.provider.Settings.ACTION_BLUETOOTH_SETTINGS))}){Text("Ouvrir les paramètres Bluetooth Android")}
      s.devices.forEach{d->
       InfoCard(d.name,"${d.address}\n${if(d.bonded)"Appairé"else "Non appairé"} • ${if(d.ble)"Détecté en BLE"else "Classic / appareil associé"}")
@@ -117,12 +128,15 @@ class MainActivity:ComponentActivity() {
      Row{listOf("Système","Clair","Sombre").forEachIndexed{i,t->TextButton(onClick={theme=i}){Text(t)}}}
      Row{Switch(developer,{developer=it});Text("Outils de développement",Modifier.padding(8.dp))}
      if(developer){
-      InfoCard("Protocole et capacités","${s.protocol}\nPID : ${s.supported.sorted().joinToString{"%02X".format(it)}}\nIdentifiants CAN et calculateurs : non capturés (en-têtes ELM désactivés).\nAucune console d’écriture libre.")
+      InfoCard("Protocole et capacités","${s.protocol}\nPID : ${s.supported.sorted().joinToString{"%02X".format(it)}}\nEn-têtes CAN vérifiés : ${if(s.canHeaders)"oui"else "non"}\nRépondants CAN : ${s.canIds.sorted().joinToString().ifEmpty{"aucun observé"}}\nIdentité des calculateurs non vérifiée.\nAucune console d’écriture libre.")
+      Row{Checkbox(exportIdentifiers,{exportIdentifiers=it});Text("Inclure le VIN et l’adresse Bluetooth dans le rapport",Modifier.padding(top=12.dp))}
+      Button(onClick={exportText=TechnicalReport.create(s,exportIdentifiers);exporter.launch("toyota-custom-session.json")}){Text("Exporter le rapport de compatibilité JSON")}
+      if(s.previousReport!=null)OutlinedButton(onClick={exportText=requireNotNull(s.previousReport);exporter.launch("toyota-custom-session-precedente.json")}){Text("Exporter la session précédente (VIN masqué)")}
       Button(onClick={exportText=s.logs.joinToString("\n");exporter.launch("toyota-custom-journal.txt")}){Text("Exporter les journaux techniques")}
-      Text("Les journaux peuvent contenir le VIN et des identifiants Bluetooth. Choisissez vous-même leur destinataire.")
+      Text("Le rapport JSON masque la réponse VIN par défaut. Les journaux techniques bruts peuvent contenir le VIN et des identifiants Bluetooth. Choisissez vous-même leur destinataire.")
       s.logs.takeLast(80).forEach{Text(it,style=MaterialTheme.typography.bodySmall)}
      }
-     InfoCard("À propos","Toyota Custom 0.1.0 • code original sous licence MIT\nApplication indépendante, sans affiliation Toyota. Fonctionnement local sans autorisation Internet.")
+     InfoCard("À propos","Toyota Custom 0.2.0 • code original sous licence MIT\nApplication indépendante, sans affiliation Toyota. Fonctionnement local sans autorisation Internet.")
     }
    }
   }

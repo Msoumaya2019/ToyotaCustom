@@ -15,14 +15,17 @@ data class Definition(val id: String, val name: String, val category: String, va
 object CommandPolicy {
  val init = listOf("ATZ", "ATE0", "ATL0", "ATS1", "ATH0", "ATSP0", "ATAT1", "ATSTFF")
  val info = setOf("ATI", "ATDP", "ATDPN", "ATRV")
+ val headers = setOf("ATCAF1", "ATD0", "ATH1")
  val reads = setOf("0100", "0120", "0140", "0160", "0101", "0104", "0105", "010C", "010D", "0111", "0142", "015B", "0902", "03", "07", "0A")
- fun readAllowed(command: String) = command in init || command in info || command in reads
+ fun readAllowed(command: String) = command in init || command in info || command in reads || command in headers
 }
 
 object Obd {
- // ELM automatic CAN formatting, headers disabled. Indexed ELM messages are joined,
- // separate ECU replies stay separate. Raw ISO-TP CAN frames are intentionally rejected.
- fun payloads(raw: String, command: String): List<List<Int>> {
+ fun messages(raw: String, command: String): List<ObdMessage> =
+  CanIsoTp.decode(raw, command) ?: headerlessPayloads(raw, command).map { ObdMessage(null, it) }
+ fun payloads(raw: String, command: String): List<List<Int>> = messages(raw, command).map { it.data }
+ // Legacy ELM formatting is retained as a fallback when the adapter cannot show headers.
+ private fun headerlessPayloads(raw: String, command: String): List<List<Int>> {
   val results = mutableListOf<List<Int>>()
   var indexed = mutableListOf<Int>()
   var nextIndex = 0
@@ -104,8 +107,10 @@ object Obd {
  }
 }
 
-class ElmSession(private val transport: ElmTransport, private val log: (String)->Unit = {}) {
+class ElmSession(private val transport: ElmTransport, private val log: (String)->Unit = {},
+ private val onReply: (String, String)->Unit = { _, _ -> }) {
  private val mutex = Mutex()
+ var canHeaders = false; private set
  suspend fun read(command: String): String = mutex.withLock {
   require(CommandPolicy.readAllowed(command)) { "Commande absente de la liste de lecture autorisée" }
   send(command)
@@ -114,16 +119,33 @@ class ElmSession(private val transport: ElmTransport, private val log: (String)-
   log("> $command")
   val reply = transport.exchange(command)
   log("< $reply")
+  onReply(command, reply)
   require(reply.contains('>')) { "Invite ELM manquante : reconnectez le boîtier" }
   require(listOf("?","UNABLE TO CONNECT","CAN ERROR","BUS ERROR","STOPPED","BUFFER FULL").none { reply.uppercase().contains(it) }) { "Erreur ELM : $reply" }
   return reply
  }
  suspend fun initialize(): String {
+  canHeaders = false
   for (cmd in CommandPolicy.init) {
    val raw=read(cmd)
    require(cmd == "ATZ" || raw.uppercase().contains("OK")) { "Initialisation refusée : $cmd" }
   }
   return read("ATI")
+ }
+ suspend fun enableCanHeaders(): Boolean = mutex.withLock {
+  try {
+   for(command in listOf("ATCAF1", "ATD0", "ATH1")) {
+    require(send(command).contains("OK", ignoreCase = true)) { "En-têtes CAN refusés" }
+   }
+   val messages = Obd.messages(send("0100"), "0100")
+   require(messages.any { it.canId != null && it.data.take(2) == listOf(0x41, 0) }) { "En-têtes CAN non vérifiés" }
+   canHeaders = true
+  } catch(e: IllegalArgumentException) {
+   log("En-têtes indisponibles : ${e.message}")
+   require(send("ATH0").contains("OK", ignoreCase = true)) { "Retour au format ELM standard impossible" }
+   canHeaders = false
+  }
+  canHeaders
  }
  // Erasing emission DTCs is separate from customization and always needs fresh readings.
  suspend fun clearStandard(confirmed: Boolean, toyotaIdentified: Boolean): String = mutex.withLock {
@@ -139,7 +161,14 @@ class ElmSession(private val transport: ElmTransport, private val log: (String)-
 
 class SimTransport : ElmTransport {
  private var cleared=false
- override suspend fun exchange(command: String): String = when(command) {
+ private var headers=false
+ override suspend fun exchange(command: String): String {
+  when(command) {
+   "ATH1" -> { headers=true; return "OK>" }
+   "ATH0" -> { headers=false; return "OK>" }
+   "ATCAF1", "ATD0" -> return "OK>"
+  }
+  val response = when(command) {
   "ATZ", "ATI" -> "Toyota Custom — simulateur indépendant>"
   "ATDP" -> "AUTO, ISO 15765-4 (CAN 11/500)>"
   "ATDPN" -> "A6>"
@@ -158,6 +187,19 @@ class SimTransport : ElmTransport {
   "07", "0A" -> "%02X 00>".format(command.toInt(16)+0x40)
   "04" -> {cleared=true;"44>"}
   else -> if (command in CommandPolicy.init) "OK>" else "NO DATA>"
+  }
+  if(!headers || command !in CommandPolicy.reads && command!="04") return response
+  val messages=Obd.payloads(response,command)
+  return messages.joinToString("\r") { formatCan(it,"7E8") } +
+   (if(command=="0100") "\r"+formatCan(listOf(0x41,0,0x80,0,0,0),"7E9") else "") + ">"
+ }
+ private fun formatCan(data: List<Int>, id: String): String {
+  val frames=mutableListOf<List<Int>>()
+  if(data.size<=7) frames.add(listOf(data.size)+data) else {
+   frames.add(listOf(0x10 or (data.size shr 8),data.size and 255)+data.take(6))
+   data.drop(6).chunked(7).forEachIndexed { index, chunk -> frames.add(listOf(0x20 or ((index+1) and 15))+chunk) }
+  }
+  return frames.joinToString("\r") { frame -> id+" "+(frame+List(8-frame.size){0}).joinToString(" "){"%02X".format(it)} }
  }
  override fun close() {}
 }

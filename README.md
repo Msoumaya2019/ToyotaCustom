@@ -1,6 +1,6 @@
-# Toyota Custom — Android 0.1.0
+# Toyota Custom — Android 0.2.0
 
-Application native Kotlin/Compose, Android 10 minimum, française, locale et sans abonnement. Première version de développement : diagnostic OBD CAN standard et transport Bluetooth Classic implémentés ; compatibilité réelle NexLink/Corolla non testée. Aucun réglage constructeur Toyota ne peut être lu ou modifié dans cette version.
+Application native Kotlin/Compose, Android 10 minimum, française, locale et sans abonnement. Version de développement : diagnostic OBD CAN standard, suivi des répondants CAN et transport Bluetooth Classic implémentés ; compatibilité réelle NexLink/Corolla non testée. Aucun réglage constructeur Toyota ne peut être lu ou modifié dans cette version.
 
 ## Démarrer
 
@@ -16,7 +16,7 @@ Sur téléphone : installer l’APK, ouvrir Paramètres, autoriser Bluetooth, ap
 
 ## Architecture
 
-- `core` : Kotlin/JVM, politique de commandes, session sérialisée, décodage OBD CAN formaté par ELM, simulateur indépendant, tests unitaires.
+- `core` : Kotlin/JVM, politique de commandes, session sérialisée, décodage OBD et réassemblage ISO-TP avec identifiants CAN 11/29 bits, simulateur indépendant, tests unitaires.
 - `app` : transports et découverte Android, MVVM/StateFlow, Compose, stockage Room de définitions et historique, export par le sélecteur Android.
 - `app/src/main/assets/toyota-catalog.json` : schéma évolutif et fiches originales de recherche, commandes nulles, modèles compatibles vides.
 - `docs/INVENTAIRE.md` : ancien travail retrouvé, preuves, manques explicites.
@@ -29,3 +29,15 @@ L’interface propose Accueil, Diagnostic, Personnalisation, Hybride, Historique
 Confirmer le NexLink physique et ses profils ; tester permissions, interruption et reconnexion sur Android 10/12/16 ; capturer les références des ECU de la Corolla 2019 Europe ; obtenir des définitions publiques/autorisées de réglages ; valider la lecture puis l’écriture sur ECU exact avec sauvegarde durable, masque et relecture. Développer BLE GATT seulement avec profil confirmé. Étendre la compatibilité modèle par modèle après preuve. La sauvegarde et restauration réelles de réglages ne sont pas implémentées ; le banc fictif sert uniquement à tester l’historique.
 
 Licence MIT pour le code original. Marque Toyota utilisée pour désigner le périmètre ; projet indépendant. Aucun code ou actif Carista/OBDLink embarqué. Voir THIRD_PARTY.md pour les dépendances et outils.
+
+
+## Nouveautés 0.2.0
+
+- Vérification du format avec en-têtes CAN reçus, suivi des adresses répondantes, réponses ISO-TP entrelacées. Les identifiants ne sont pas des identités ECU certifiées.
+- Repli sur le format sans en-tête si la vérification échoue ; aucun changement d’adressage constructeur ni ajout de commande OEM.
+- Rapport de compatibilité JSON avec commandes/réponses corrélées, capacités observées et indicateur simulation. La réponse VIN est masquée par défaut ; l’inclusion des identifiants nécessite de cocher l’option d’export.
+- Rapport conservé après déconnexion et dernière session précédente conservée avec VIN masqué lors d’une nouvelle connexion. Ces rapports restent en mémoire jusqu’à la fermeture de l’application ; les exporter pour les conserver.
+- Appareil ayant communiqué mémorisé ; reconnexion automatique à son adresse après une recherche autorisée (option désactivable). Aucun appareil n’est choisi sur la seule base du nom NEXAS.
+- Gestion des erreurs de recherche BLE, des changements d’appairage et protection contre les résultats tardifs d’une session annulée.
+
+Pour préparer une validation sur Corolla : Paramètres → Outils de développement → Exporter le rapport de compatibilité JSON. Ce rapport décrit uniquement les observations ; aucun état « écriture validée » n’en est déduit.
