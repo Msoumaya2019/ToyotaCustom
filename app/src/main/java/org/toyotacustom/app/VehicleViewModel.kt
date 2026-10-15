@@ -5,6 +5,8 @@ import androidx.lifecycle.*
 import androidx.room.Room
 import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.*
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import org.json.JSONArray
 import org.toyotacustom.core.*
 import java.util.UUID
@@ -14,12 +16,14 @@ data class ScreenState(val status:String="Déconnecté",val connected:Boolean=fa
  val supported:Set<Int> = emptySet(), val values:Map<Int,Double> = emptyMap(),val codes:List<String>?=null,
  val devices:List<Device> = emptyList(),val logs:List<String> = emptyList(),val custom:Map<String,String> = emptyMap(),
  val canHeaders:Boolean=false,val canIds:Set<String> = emptySet(),val traces:List<ExchangeTrace> = emptyList(),
- val deviceAddress:String?=null,val autoConnect:Boolean=true,val savedDeviceName:String?=null,val previousReport:String?=null)
+ val deviceAddress:String?=null,val autoConnect:Boolean=true,val savedDeviceName:String?=null,val previousReport:String?=null,
+ val sessionId:String?=null,val sessionStartedAt:Long?=null,val ecuIdentities:List<EcuIdentity> = emptyList())
 
 class VehicleViewModel(app:Application):AndroidViewModel(app) {
- private val db=Room.databaseBuilder(app,LocalDatabase::class.java,"toyota-custom.db").build()
+ private val db=Room.databaseBuilder(app,LocalDatabase::class.java,"toyota-custom.db").addMigrations(DatabaseMigrations.FROM_1_TO_2).build()
  private val store=db.store()
  val history=store.history().stateIn(viewModelScope,SharingStarted.WhileSubscribed(5000),emptyList())
+ val savedReports=store.reports().stateIn(viewModelScope,SharingStarted.WhileSubscribed(5000),emptyList())
  private val preferences=app.getSharedPreferences("connection",0)
  val state=MutableStateFlow(ScreenState(autoConnect=preferences.getBoolean("autoConnect",true),savedDeviceName=preferences.getString("deviceName",null)))
  private var session:ElmSession?=null
@@ -30,6 +34,7 @@ class VehicleViewModel(app:Application):AndroidViewModel(app) {
  private var lastDevice:Device?=null
  private var generation=0
  private var scanJob:Job?=null
+ private val reportMutex=Mutex()
  val bluetooth=BluetoothDevices(app,found={ d -> state.update { s->s.copy(devices=(s.devices.filterNot { it.address==d.address }+d).sortedBy { !it.name.contains("NEX",true) }) } },failed={ message->
   state.update{it.copy(status=message)};log(message)
  })
@@ -69,9 +74,11 @@ class VehicleViewModel(app:Application):AndroidViewModel(app) {
   lastDevice=d
   val old=state.value
   val previousReport=if(old.traces.isNotEmpty())TechnicalReport.create(old)else old.previousReport
-  state.update {ScreenState(devices=it.devices,autoConnect=it.autoConnect,savedDeviceName=it.savedDeviceName,simulation=simulate,deviceAddress=d?.address,previousReport=previousReport)}
+  sessionId=UUID.randomUUID().toString()
+  state.update {ScreenState(devices=it.devices,autoConnect=it.autoConnect,savedDeviceName=it.savedDeviceName,simulation=simulate,deviceAddress=d?.address,previousReport=previousReport,sessionId=sessionId,sessionStartedAt=System.currentTimeMillis())}
   val connectionGeneration=generation
   connectionJob=viewModelScope.launch {
+   persistReport(old)
    var attempt=0
    while(isActive && attempt<3) {
     var attemptSession:ElmSession?=null
@@ -84,7 +91,7 @@ class VehicleViewModel(app:Application):AndroidViewModel(app) {
        val ids=if(command in CommandPolicy.reads || command=="04")runCatching{Obd.messages(reply,command).mapNotNull{it.canId}.toSet()}.getOrDefault(emptySet())else emptySet()
        state.update{it.copy(canIds=it.canIds+ids,traces=(it.traces+ExchangeTrace(System.currentTimeMillis(),command,reply)).takeLast(200))}
       }
-     });attemptSession=s;session=s;sessionId=UUID.randomUUID().toString()
+     });attemptSession=s;session=s
      if(transport is ClassicTransport) transport.connect()
      val info=s.initialize()
      val first=s.read("0100")
@@ -99,6 +106,7 @@ class VehicleViewModel(app:Application):AndroidViewModel(app) {
      ensureActive()
      if(!simulate && d!=null)preferences.edit().putString("deviceAddress",d.address).putString("deviceName",d.name).apply()
      state.update{it.copy(connected=true,busy=false,canHeaders=headers,deviceAddress=d?.address,adapter=info.replace(">","").trim(),supported=supported,protocol=protocol,vin=vin,savedDeviceName=preferences.getString("deviceName",null),status=if(simulate) "SIMULATION — aucune connexion véhicule" else if(Obd.toyota(vin)) "Toyota identifiée par WMI — modèle exact non confirmé" else "VIN Toyota non confirmé : diagnostic bloqué")}
+     persistReport(state.value)
      break
     } catch(e:CancellationException) {attemptSession?.close();throw e}
     catch(e:Exception) {
@@ -117,6 +125,27 @@ class VehicleViewModel(app:Application):AndroidViewModel(app) {
   state.update {it.copy(status="Déconnecté — dernière session conservée pour export",connected=false,busy=false,values=emptyMap(),codes=null,custom=emptyMap())}
  }
  private fun allowed()=state.value.connected&&(state.value.simulation||Obd.toyota(state.value.vin))
+ private suspend fun persistReport(snapshot:ScreenState):Boolean = reportMutex.withLock {
+  val id=snapshot.sessionId?:return@withLock false
+  if(snapshot.traces.isEmpty())return@withLock false
+  try {
+   store.saveReport(SavedReport(id,snapshot.sessionStartedAt?:System.currentTimeMillis(),snapshot.simulation,TechnicalReport.create(snapshot)))
+   true
+  }catch(e:CancellationException){throw e}catch(e:Exception){log("Sauvegarde du rapport impossible : ${e.message}");false}
+ }
+ fun saveReport() {
+  val snapshot=state.value
+  viewModelScope.launch {
+   val saved=persistReport(snapshot)
+   if(state.value.sessionId==snapshot.sessionId)state.update{it.copy(status=if(saved)"Rapport sauvegardé localement (VIN masqué)"else "Rapport non sauvegardé : aucune session ou erreur de stockage")}
+  }
+ }
+ fun identifyEcus()=operation {s->
+  require(state.value.canHeaders){"En-têtes CAN vérifiés nécessaires pour attribuer les informations"}
+  val ecus=VehicleInformation.collect(s::read)
+  state.update{it.copy(ecuIdentities=ecus,status="Informations OBD reçues de ${ecus.size} répondant(s). Compatibilité Toyota non déduite.")}
+  persistReport(state.value)
+ }
  private fun operation(block:suspend (ElmSession)->Unit) {
   if(state.value.busy || !allowed()) return
   val s=session?:return
@@ -149,6 +178,7 @@ class VehicleViewModel(app:Application):AndroidViewModel(app) {
   }
   require(answered>0){"Aucun mode DTC n’a répondu : absence de défaut non établie"}
   state.update{it.copy(codes=codes,status="Lecture terminée : $answered mode(s) répondu(s). Indisponible : ${unavailable.joinToString().ifEmpty{"aucun"}}")}
+  persistReport(state.value)
  }
  fun refresh()=operation { s ->
   val values=mutableMapOf<Int,Double>()
@@ -166,6 +196,7 @@ class VehicleViewModel(app:Application):AndroidViewModel(app) {
   val remaining=Obd.dtcs(s.read("03"))
   state.update{it.copy(codes=remaining.map{"Mémorisé : $it"},status=if(remaining.isEmpty()) "Effacement confirmé pour les défauts mémorisés. Les permanents peuvent rester." else "Réponse positive, mais défauts toujours présents")}
   store.add(History(session=sessionId,parameter="DTC standard",before="Voir entrée précédente",after=remaining.joinToString(),result=state.value.status,simulated=sim))
+  persistReport(state.value)
  }
  // No vehicle customization transport exists until ECU-specific evidence is available.
  fun simulateChange(id:String,value:String,restore:Boolean=false) {

@@ -16,7 +16,7 @@ object CommandPolicy {
  val init = listOf("ATZ", "ATE0", "ATL0", "ATS1", "ATH0", "ATSP0", "ATAT1", "ATSTFF")
  val info = setOf("ATI", "ATDP", "ATDPN", "ATRV")
  val headers = setOf("ATCAF1", "ATD0", "ATH1")
- val reads = setOf("0100", "0120", "0140", "0160", "0101", "0104", "0105", "010C", "010D", "0111", "0142", "015B", "0902", "03", "07", "0A")
+ val reads = setOf("0100", "0120", "0140", "0160", "0101", "0104", "0105", "010C", "010D", "0111", "0142", "015B", "0900", "0902", "0904", "0906", "090A", "03", "07", "0A")
  fun readAllowed(command: String) = command in init || command in info || command in reads || command in headers
 }
 
@@ -168,6 +168,15 @@ class SimTransport : ElmTransport {
    "ATH0" -> { headers=false; return "OK>" }
    "ATCAF1", "ATD0" -> return "OK>"
   }
+  fun ascii(value:String,size:Int)=value.padEnd(size,'\u0000').map{it.code}
+  val information=when(command) {
+   "0900"->listOf("7E8" to listOf(0x49,0,0x54,0x40,0,0),"7E9" to listOf(0x49,0,0x10,0x40,0,0))
+   "0904"->listOf("7E8" to (listOf(0x49,4,1)+ascii("SIM-CAL-0001",16)),"7E9" to (listOf(0x49,4,1)+ascii("SIM-CAL-0002",16)))
+   "0906"->listOf("7E8" to listOf(0x49,6,1,1,2,3,4))
+   "090A"->listOf("7E8" to (listOf(0x49,10,1)+ascii("SIM-ECU-MOTEUR",20)),"7E9" to (listOf(0x49,10,1)+ascii("SIM-ECU-AUXILIAIRE",20)))
+   else->null
+  }
+  if(information!=null)return information.joinToString("\r"){(id,data)->if(headers)formatCan(data,id)else data.joinToString(" "){"%02X".format(it)}}+">"
   val response = when(command) {
   "ATZ", "ATI" -> "Toyota Custom — simulateur indépendant>"
   "ATDP" -> "AUTO, ISO 15765-4 (CAN 11/500)>"

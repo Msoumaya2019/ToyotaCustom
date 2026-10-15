@@ -1,35 +1,37 @@
-# Validation 0.2.0 — 15 octobre 2026
+# Validation 0.3.0 — 15 octobre 2026
 
-La validation 0.1.0 est conservée dans `validation/0.1.0.md`. Cette version conserve l’implémentation originale et la licence MIT, et ajoute le suivi des répondants CAN ainsi qu’un rapport de compatibilité.
+Les bilans précédents sont conservés dans `validation/0.1.0.md` et `validation/0.2.0.md`.
 
-## Résultats constatés
-
-| Vérification | Résultat |
+| Vérification | Résultat constaté |
 |---|---|
-| Noyau Kotlin/JVM | 32 tests, 0 échec, 0 ignoré |
+| Noyau Kotlin/JVM | 46 tests réussis, aucun échec ni test ignoré |
 | Android Lint | 0 erreur, 13 avertissements |
 | APK application et APK de tests | Compilation réussie |
-| Signature APK | Signature v2 vérifiée avec apksigner, certificat debug |
-| Émulateur Android 15, API 35 | 4 tests réussis en 74.072 secondes |
+| Signature APK | Signature v2 valide, certificat debug |
+| Android 15, API 35, émulateur en lecture seule | 6 tests réussis en 139.448 secondes |
+| Migration de base 1 → 2 | Ancien historique et définitions conservés ; validation du schéma par Room réussie |
+| Persistance d’un rapport | Rapport conservé après fermeture et réouverture de la base |
 
-Environnement local : JDK JetBrains 21.0.5, Gradle 8.14.3, Kotlin 2.4.0, SDK 36, Room 2.8.5. L’émulateur est démarré en lecture seule ; son état sauvegardé n’est pas modifié. Les avertissements Lint concernent des versions de dépendances, attributs dépendants de l’API, recommandations KSP/KTX et l’icône Android par défaut.
+Compilation locale avec JDK JetBrains 21.0.5, Gradle 8.14.3, Kotlin 2.4.0, SDK 36 et Room 2.8.5. Les avertissements concernent principalement les versions de dépendances, attributs dépendants de l’API, recommandations KSP/KTX et l’icône Android par défaut.
 
-## Couverture nouvelle
+## Nouvelles vérifications
 
-Les tests CAN vérifient les identifiants 11 et 29 bits avec ou sans espaces, la suppression du padding, le réassemblage ISO-TP entrelacé entre plusieurs sources, le passage du compteur de séquence de F à 0, les messages incomplets, les doublons, les séquences invalides, les trames simples tronquées, les mélanges de formats, les octets malformés d’un second répondant et les valeurs contradictoires. Un test prouve que des réponses OK sans en-têtes réellement reçus n’activent pas la capacité CAN. Le simulateur vérifie VIN, DTC et effacement avec relecture en mode avec en-têtes.
+Les 14 nouveaux tests du noyau couvrent les capacités mode 09 par identifiant CAN, le refus d’une attribution sans en-tête, les bitmaps tronqués ou contradictoires, les CALID multiples, les noms et CVN, les octets nuls intérieurs, les textes invalides ou vides, les longueurs incompatibles, les lectures limitées aux informations annoncées, les réponses absentes et les valeurs contradictoires. Les 32 tests OBD/CAN existants restent réussis.
 
-Les quatre tests d’interface vérifient le blocage du diagnostic hors connexion, la lecture et l’effacement simulés des défauts, l’historique simulé, les répondants 7E8/7E9 fictifs, l’indicateur simulation du rapport JSON, le masquage de la réponse VIN, l’inclusion volontaire du VIN, la conservation du rapport après déconnexion et le redémarrage d’une session avec ses propres échanges. Ces adresses sont des fixtures du simulateur ; elles ne sont pas des observations sur votre voiture.
+Les 5 tests de parcours Android couvrent le diagnostic bloqué hors connexion, le diagnostic et l’effacement simulés, l’historique simulé, le masquage du VIN et la séparation des sessions, ainsi que la lecture des noms/CALID/CVN fictifs et l’apparition de rapports sauvegardés. Un sixième test crée une base version 1 selon le schéma des versions 0.1/0.2, la migre avec Room, vérifie l’historique et les définitions, sauvegarde un rapport puis le relit après réouverture. Aucun fichier de données utilisateur existant n’est remplacé par ce test.
 
-## Limites matérielles et fonctions à développer
+## Résultats et limites
 
-Aucun essai n’a été effectué sur un NexLink physique ni sur votre Corolla. La découverte, l’appairage, la mémorisation d’un appareil réel, sa reconnexion et le traitement des interruptions doivent être vérifiés sur téléphone avec le boîtier. Android 10/11 et les refus/révocations de permissions demandent aussi des essais physiques. Les tests sur émulateur ne prouvent pas la compatibilité radio.
+Le format pris en charge pour les informations standard est vérifié sur des fixtures originales et le simulateur interne. Les noms et calibrations sont des déclarations de l’ECU : ils ne prouvent pas une référence matérielle complète, un firmware authentique, un modèle Toyota ni une compatibilité de personnalisation. Les formats non pris en charge restent signalés comme inconnus ou invalides.
 
-Les identifiants CAN observés ne certifient ni la fonction, ni la référence matérielle/logicielle d’un ECU. Aucun balayage de carrosserie ni DID constructeur n’est ajouté. Les 13 familles de personnalisation issues des anciennes analyses restent « À vérifier », avec commandes nulles et compatibilités inconnues. Les écritures OEM, leurs sauvegardes/restaurations, les données hybrides Toyota et le transport BLE GATT restent à développer sur la base de définitions et d’essais propres à la configuration cible. Freinage, airbags, stabilité et avertissements de ceinture restent exclus.
+Aucun NexLink physique ni véhicule réel n’a été utilisé. L’appairage, la radio, les délais, les interruptions et les lectures sur Corolla 1.8 Hybrid 2019 Europe restent à tester. Le transport BLE GATT, l’identification Toyota constructeur précise, les données hybrides spécifiques et les commandes de confort ne sont pas ajoutés. Les 13 fiches Toyota restent « À vérifier » et leurs commandes restent nulles. Les écritures OEM restent désactivées.
 
-## Premier essai sur Corolla
+## Utilisation de la nouvelle version
 
-Installer la 0.2.0 (même identifiant d’application et même clé debug locale que la 0.1.0), autoriser Bluetooth, appairer NEXAS puis sélectionner l’appareil. Commencer par l’identification et les lectures OBD. Dans Paramètres, activer Outils de développement et exporter le rapport de compatibilité JSON. La réponse VIN est masquée par défaut. Après une rupture, le rapport de la session précédente reste exportable séparément. Les deux rapports restent en mémoire jusqu’à la fermeture de l’application ; les exporter pour les conserver. Les journaux texte bruts peuvent contenir des identifiants.
+Après connexion, ouvrir Diagnostic puis « Lire les identifiants OBD des calculateurs ». Cette fonction requiert un VIN Toyota reconnu et des en-têtes CAN vérifiés. L’application lit 0900 puis seulement les informations annoncées parmi 0904, 0906 et 090A. Elle conserve le lien entre chaque réponse et son adresse CAN.
 
-Une réponse valide permet de constater le comportement de cette configuration. Elle ne suffit pas à attribuer une fonction de confort à une adresse CAN. L’effacement n’est pas nécessaire pour tester la communication.
+Les rapports masqués sont sauvegardés à la connexion réussie, après la lecture des codes défaut et après la lecture des identifiants. Les outils de développement permettent aussi une sauvegarde manuelle. Historique affiche les 50 rapports les plus récents et permet de les exporter ; les sauvegardes restent disponibles après fermeture de l’application. Une nouvelle sauvegarde de la même session actualise son rapport. Le VIN reste masqué dans les sauvegardes, même si l’utilisateur choisit de l’inclure dans un export immédiat distinct.
 
-GitHub Actions exécute les 32 tests du noyau et Android Lint, puis publie l’APK en artefact. Les 4 tests d’interface sont exécutés localement sur émulateur. La clé debug de GitHub Actions peut différer de la clé locale : conserver une même provenance d’APK pour les mises à jour de test.
+La base passe de la version 1 à 2 sans migration destructive. La mise à jour de l’APK local conserve l’identifiant d’application et la clé debug des versions précédentes ; elle ne nécessite pas de désinstaller l’application. Les APK GitHub Actions peuvent utiliser une clé debug différente : conserver une même provenance pour les mises à jour de test.
+
+GitHub Actions exécute les 46 tests du noyau et Android Lint avant de publier l’APK. Les 6 tests Android sont exécutés localement sur émulateur.

@@ -1,4 +1,4 @@
-# Toyota Custom — Android 0.2.0
+# Toyota Custom — Android 0.3.0
 
 Application native Kotlin/Compose, Android 10 minimum, française, locale et sans abonnement. Version de développement : diagnostic OBD CAN standard, suivi des répondants CAN et transport Bluetooth Classic implémentés ; compatibilité réelle NexLink/Corolla non testée. Aucun réglage constructeur Toyota ne peut être lu ou modifié dans cette version.
 
@@ -36,8 +36,17 @@ Licence MIT pour le code original. Marque Toyota utilisée pour désigner le pé
 - Vérification du format avec en-têtes CAN reçus, suivi des adresses répondantes, réponses ISO-TP entrelacées. Les identifiants ne sont pas des identités ECU certifiées.
 - Repli sur le format sans en-tête si la vérification échoue ; aucun changement d’adressage constructeur ni ajout de commande OEM.
 - Rapport de compatibilité JSON avec commandes/réponses corrélées, capacités observées et indicateur simulation. La réponse VIN est masquée par défaut ; l’inclusion des identifiants nécessite de cocher l’option d’export.
-- Rapport conservé après déconnexion et dernière session précédente conservée avec VIN masqué lors d’une nouvelle connexion. Ces rapports restent en mémoire jusqu’à la fermeture de l’application ; les exporter pour les conserver.
+- Rapport conservé après déconnexion et dernière session précédente conservée avec VIN masqué lors d’une nouvelle connexion. Les rapports immédiats restent en mémoire ; les sauvegardes durables ajoutées en 0.3 sont décrites ci-dessous.
 - Appareil ayant communiqué mémorisé ; reconnexion automatique à son adresse après une recherche autorisée (option désactivable). Aucun appareil n’est choisi sur la seule base du nom NEXAS.
 - Gestion des erreurs de recherche BLE, des changements d’appairage et protection contre les résultats tardifs d’une session annulée.
 
 Pour préparer une validation sur Corolla : Paramètres → Outils de développement → Exporter le rapport de compatibilité JSON. Ce rapport décrit uniquement les observations ; aucun état « écriture validée » n’en est déduit.
+
+
+## Nouveautés 0.3.0
+
+Le bouton « Lire les identifiants OBD des calculateurs » lit les capacités standard du mode 09 (0900), puis demande uniquement les informations annoncées parmi CALID (0904), CVN (0906) et nom déclaré (090A). Les réponses sont associées à leur identifiant CAN ; aucune adresse n’est assimilée d’office à un moteur ou à un équipement Toyota. Les en-têtes vérifiés et l’identification Toyota initiale sont requis. Une information déclarée n’authentifie pas le calculateur et n’active pas de personnalisation.
+
+Les rapports JSON masqués sont désormais enregistrés dans Room après la connexion, la lecture des codes défaut ou l’identification des calculateurs terminées. Une sauvegarde manuelle est aussi disponible dans les outils de développement. L’onglet Historique affiche les 50 rapports les plus récents et permet de les exporter après redémarrage de l’application. Une sauvegarde ultérieure d’une même session actualise son rapport. Les anciennes entrées d’historique sont préservées par la migration de base 1 → 2.
+
+Les exports immédiats incluant volontairement le VIN et les journaux bruts restent des actions distinctes. Les sauvegardes de rapports conservent le masquage du VIN, indépendamment de l’option d’export immédiat.

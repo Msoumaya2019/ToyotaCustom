@@ -26,3 +26,10 @@ Les [permissions Android officielles](https://developer.android.com/develop/conn
 ## Extension CAN 0.2.0
 
 Le [datasheet ELM327](https://www.elmelectronics.com/wp-content/uploads/2017/01/ELM327DS.pdf), sections CAF0/CAF1, D0/D1 et H0/H1 (pages 14, 17 et 18), précise qu’avec H1 les octets PCI reçus redeviennent visibles, tandis que CAF1 conserve le formatage des requêtes. D0 désactive l’affichage du DLC. La nouvelle implémentation originale reconstruit ces réponses ; le boîtier doit encore prouver ce comportement sur le matériel réel. Aucun UUID NexLink ou DID constructeur nouveau n’est déduit de cette documentation.
+
+
+## Extension mode 09 — 0.3.0
+
+Le [manuel ELM327](https://www.elmelectronics.com/wp-content/uploads/2017/01/ELM327DS.pdf), section des réponses multilignes page 44, documente 0904 avec plusieurs calculateurs et rappelle le rôle des en-têtes pour attribuer les calibrations. Le [manuel du simulateur Au Group Electronics, révision C](https://www.auelectronics.com/downloads/usermanual_simobd2can.pdf), tables des informations du service 09, distingue capacités, VIN, CALID, CVN et ECUNAME.
+
+Les définitions de commandes de [python-OBD](https://github.com/brendan-w/python-OBD/blob/master/obd/commands.py) confirment 0900, 0904 et 0906 ; 090A y est commenté comme non testé. La [documentation primaire py-obdii](https://py-obdii.readthedocs.io/en/latest/api/modes/mode_09.html) référence aussi le nom ECU. Aucun code ni jeu de données de ces projets n’est intégré ; les décodeurs et fixtures synthétiques sont originaux. Ces sources documentent des lectures standard, sans établir la compatibilité NexLink/Corolla ni fournir de commande de personnalisation Toyota.

@@ -22,3 +22,14 @@ Sécurité : liste fermée, mutex, aucune console arbitraire. Services UDS 10/27
 ## Rapport de compatibilité
 
 `toyota-custom-session-v1` contient le mode simulation, le protocole, la vérification des en-têtes, les adresses CAN observées, les PID supportés et au plus 200 échanges corrélés par commande et horodatage. Le VIN en clair et l’adresse Bluetooth sont omis par défaut, et la réponse à 0902 est entièrement remplacée. Les journaux texte bruts restent un export distinct pouvant contenir des identifiants. Le rapport ne certifie jamais le modèle du véhicule ni l’identité d’un ECU. Une nouvelle connexion repart avec des observations vides ; le rapport de la session précédente est séparé et conserve son indicateur de simulation.
+
+
+## Informations standard par répondant — 0.3.0
+
+Sur demande, 0900 retourne les informations annoncées pour le mode 09. Le format pris en charge est 49 00 suivi de quatre octets de bitmap, attribué à un identifiant CAN visible. Les requêtes 0904, 0906 et 090A sont envoyées seulement lorsqu’au moins un répondant les annonce. Ce sont des requêtes fonctionnelles OBD ; l’application n’envoie aucun nouveau routage constructeur.
+
+Les formats décodés sont 49 + InfoType + nombre d’éléments, puis respectivement 16 octets par CALID, 4 par CVN et 20 pour un nom unique. Les longueurs, compteurs et caractères sont vérifiés. Les octets nuls intérieurs des textes sont rendus visibles, afin de ne pas concaténer artificiellement des identifiants. Une réponse incohérente, absente ou contradictoire produit une observation d’erreur ; aucun identifiant supposé n’est substitué. Les nombres CALID/CVN différents ne donnent pas lieu à une association présumée.
+
+L’adresse, le nom déclaré, les identifiants de calibration et les CVN sont des observations, pas une preuve d’authenticité du firmware, d’identité matérielle complète ou de compatibilité Toyota. Les conditions et commandes de personnalisation restent inconnues.
+
+Le format de rapport conserve sa version compatible `toyota-custom-session-v1` et ajoute `sessionId`, `sessionStartedAt` et `declaredStandardInfo`. Les rapports masqués sont sauvegardés dans `session_reports`. Les exports bruts ou incluant le VIN ne sont pas automatiquement stockés dans cette table. La migration 1 → 2 crée cette table sans réinitialiser `history` ni `definitions` ; aucune migration destructive n’est configurée.

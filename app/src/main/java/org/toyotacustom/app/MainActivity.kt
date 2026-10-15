@@ -27,6 +27,7 @@ class MainActivity:ComponentActivity() {
 @Composable fun ToyotaApp(vm:VehicleViewModel=viewModel()) {
  val s by vm.state.collectAsStateWithLifecycle()
  val history by vm.history.collectAsStateWithLifecycle()
+ val savedReports by vm.savedReports.collectAsStateWithLifecycle()
  var tab by remember{mutableIntStateOf(0)}
  var theme by remember{mutableIntStateOf(0)}
  var developer by remember{mutableStateOf(false)}
@@ -72,6 +73,9 @@ class MainActivity:ComponentActivity() {
      val enabled=s.connected&&!s.busy&&(s.simulation||Obd.toyota(s.vin))
      InfoCard("Diagnostic OBD standard","Lecture des défauts antipollution mémorisés, en attente et permanents. Le balayage des calculateurs Toyota n’est pas encore implémenté.")
      InfoCard("Répondants CAN observés",if(s.canIds.isEmpty())"Aucun identifiant observé"else "${s.canIds.sorted().joinToString()}\nAdresses de réponse uniquement ; identité des calculateurs non vérifiée.")
+     Button(onClick={vm.identifyEcus()},enabled=enabled&&s.canHeaders){Text("Lire les identifiants OBD des calculateurs")}
+     s.ecuIdentities.forEach{ecu->InfoCard("Informations déclarées • ${ecu.canId}",
+      "Nom déclaré : ${ecu.declaredName?:"Non obtenu"}\nCALID : ${ecu.calibrationIds.joinToString().ifEmpty{"Non obtenu"}}\nCVN : ${ecu.verificationNumbers.joinToString().ifEmpty{"Non obtenu"}}\n${ecu.issues.joinToString("\n")}\nCompatibilité de personnalisation Toyota non établie.")}
      Button(onClick={vm.diagnostic()},enabled=enabled){Text("Lire les codes défaut")}
      InfoCard("Résultat",s.codes?.let{if(it.isEmpty())"Aucun code retourné par les modes ayant répondu. Consultez les journaux pour les modes indisponibles."else it.joinToString("\n")}?:"Aucune lecture effectuée")
      OutlinedButton(onClick={clearDialog=true},enabled=enabled&&s.codes!=null){Text("Effacer les défauts standard…")}
@@ -108,6 +112,13 @@ class MainActivity:ComponentActivity() {
       InfoCard((if(h.simulated)"SIMULATION • "else "VÉHICULE • ")+h.parameter,"${java.time.Instant.ofEpochMilli(h.time)}\nAvant : ${h.before}\nAprès : ${h.after}\n${h.result}")
       if(h.simulated && h.parameter=="sim_lights")OutlinedButton(onClick={vm.simulateChange(h.parameter,h.before,true)},enabled=s.simulation&&s.connected){Text("Restaurer cette valeur en simulation")}
      }
+     Text("Rapports OBD sauvegardés",style=MaterialTheme.typography.titleLarge)
+     Text("Les 50 rapports les plus récents sont affichés. Réponse VIN masquée dans les sauvegardes locales.")
+     if(savedReports.isEmpty())Text("Aucun rapport sauvegardé")
+     savedReports.forEach{report->
+      InfoCard(if(report.simulated)"Rapport OBD • SIMULATION"else "Rapport OBD • VÉHICULE","${java.time.Instant.ofEpochMilli(report.createdAt)}\nSession ${report.id.take(8)}")
+      OutlinedButton(onClick={exportText=report.json;exporter.launch("toyota-custom-${report.id.take(8)}.json")}){Text("Exporter ce rapport sauvegardé")}
+     }
     }
     5->{
      Text("Connexion Bluetooth",style=MaterialTheme.typography.titleLarge)
@@ -131,12 +142,13 @@ class MainActivity:ComponentActivity() {
       InfoCard("Protocole et capacités","${s.protocol}\nPID : ${s.supported.sorted().joinToString{"%02X".format(it)}}\nEn-têtes CAN vérifiés : ${if(s.canHeaders)"oui"else "non"}\nRépondants CAN : ${s.canIds.sorted().joinToString().ifEmpty{"aucun observé"}}\nIdentité des calculateurs non vérifiée.\nAucune console d’écriture libre.")
       Row{Checkbox(exportIdentifiers,{exportIdentifiers=it});Text("Inclure le VIN et l’adresse Bluetooth dans le rapport",Modifier.padding(top=12.dp))}
       Button(onClick={exportText=TechnicalReport.create(s,exportIdentifiers);exporter.launch("toyota-custom-session.json")}){Text("Exporter le rapport de compatibilité JSON")}
+      OutlinedButton(onClick={vm.saveReport()},enabled=s.traces.isNotEmpty()){Text("Sauvegarder le rapport localement (VIN masqué)")}
       if(s.previousReport!=null)OutlinedButton(onClick={exportText=requireNotNull(s.previousReport);exporter.launch("toyota-custom-session-precedente.json")}){Text("Exporter la session précédente (VIN masqué)")}
       Button(onClick={exportText=s.logs.joinToString("\n");exporter.launch("toyota-custom-journal.txt")}){Text("Exporter les journaux techniques")}
       Text("Le rapport JSON masque la réponse VIN par défaut. Les journaux techniques bruts peuvent contenir le VIN et des identifiants Bluetooth. Choisissez vous-même leur destinataire.")
       s.logs.takeLast(80).forEach{Text(it,style=MaterialTheme.typography.bodySmall)}
      }
-     InfoCard("À propos","Toyota Custom 0.2.0 • code original sous licence MIT\nApplication indépendante, sans affiliation Toyota. Fonctionnement local sans autorisation Internet.")
+     InfoCard("À propos","Toyota Custom 0.3.0 • code original sous licence MIT\nApplication indépendante, sans affiliation Toyota. Fonctionnement local sans autorisation Internet.")
     }
    }
   }

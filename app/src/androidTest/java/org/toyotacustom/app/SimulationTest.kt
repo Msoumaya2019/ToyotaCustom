@@ -25,6 +25,7 @@ class SimulationTest {
   simulate();select("Diagnostic")
   compose.onNodeWithText("Lire les codes défaut").performScrollTo().performClick()
   compose.waitUntil(10000){compose.onAllNodesWithText("Mémorisé : P0133").fetchSemanticsNodes().isNotEmpty()}
+  compose.waitUntil(15000){compose.onAllNodes(hasText("Effacer les défauts standard…") and isEnabled()).fetchSemanticsNodes().isNotEmpty()}
   compose.onNodeWithText("Effacer les défauts standard…").performScrollTo().performClick()
   compose.onNodeWithText("Confirmer en simulation").performClick()
   compose.waitUntil(10000){compose.onAllNodesWithText("Effacement confirmé pour les défauts mémorisés. Les permanents peuvent rester.").fetchSemanticsNodes().isNotEmpty()}
@@ -40,8 +41,10 @@ class SimulationTest {
  }
  @Test fun simulationRecordsCanRespondersAndMasksVinInReport() {
   simulate()
+  lateinit var reconnectModel:VehicleViewModel
   compose.runOnUiThread {
    val model=androidx.lifecycle.ViewModelProvider(compose.activity)[VehicleViewModel::class.java]
+   reconnectModel=model
    val state=model.state.value
    org.junit.Assert.assertTrue(state.canHeaders)
    org.junit.Assert.assertEquals(setOf("7E8","7E9"),state.canIds)
@@ -59,7 +62,21 @@ class SimulationTest {
    org.junit.Assert.assertFalse(model.state.value.connected)
    model.connect(simulate=true)
    org.junit.Assert.assertNotNull(model.state.value.previousReport)
-   org.junit.Assert.assertEquals(1,model.state.value.traces.count{it.command=="ATZ"})
   }
+  compose.waitUntil(15000){reconnectModel.state.value.connected && reconnectModel.state.value.traces.count{it.command=="ATZ"}==1}
+ }
+ @Test fun declaredEcuInformationCanBeReadAndSaved() {
+  simulate();select("Diagnostic")
+  compose.onNodeWithText("Lire les identifiants OBD des calculateurs").performScrollTo().performClick()
+  compose.waitUntil(15000){compose.onAllNodesWithText("SIM-ECU-MOTEUR",substring=true).fetchSemanticsNodes().isNotEmpty()}
+  compose.runOnUiThread {
+   val model=androidx.lifecycle.ViewModelProvider(compose.activity)[VehicleViewModel::class.java]
+   val info=model.state.value.ecuIdentities
+   org.junit.Assert.assertEquals(2,info.size)
+   org.junit.Assert.assertEquals("SIM-CAL-0001",info.first().calibrationIds.single())
+   org.junit.Assert.assertEquals(2,org.json.JSONObject(TechnicalReport.create(model.state.value)).getJSONArray("declaredStandardInfo").length())
+  }
+  select("Historique")
+  compose.waitUntil(15000){compose.onAllNodesWithText("Rapport OBD • SIMULATION").fetchSemanticsNodes().isNotEmpty()}
  }
 }
